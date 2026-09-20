@@ -14,3 +14,18 @@ test('pentatonic scale and cycle support the lead pattern',()=>{
  assert.throws(()=>api.scale('E4','unknown',2));
  assert.throws(()=>api.cycle([]));
 });
+
+test('nextBeat uses a shared origin and advances past exact boundaries',async()=>{
+ let time=0;const waits=[];
+ const api=createMidiHelpers({send:async()=>{},sleep:async ms=>{waits.push(ms);time+=ms;},now:()=>time,log:()=>{}});
+ time=125;await api.nextBeat();assert.ok(Math.abs(time-500)<0.001);
+ await api.nextBeat();assert.ok(Math.abs(time-1000)<0.001);
+ assert.ok(waits.every(ms=>ms>0&&ms<=25));
+});
+test('tempo changes preserve beat phase and affect a pending nextBeat',async()=>{
+ let time=0,changed=false,api;
+ api=createMidiHelpers({send:async()=>{},sleep:async ms=>{time+=ms;if(!changed){changed=true;api.setBpm(60);}},now:()=>time,log:()=>{}});
+ time=225;await api.nextBeat();assert.ok(Math.abs(time-750)<0.001);
+ const before=time;assert.throws(()=>api.setBpm(0));
+ await api.nextBeat();assert.ok(Math.abs(time-before-1000)<0.001);
+});

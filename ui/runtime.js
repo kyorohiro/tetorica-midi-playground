@@ -7,10 +7,24 @@ export function noteNumber(value) {
   if (n<0 || n>127) throw new Error('Note outside MIDI range');
   return n;
 }
-export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120}) {
+export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()=>performance.now()}) {
   let bpm=initialBpm;
+  let anchorTime=now(), anchorBeat=0;
+  const currentBeat=()=>anchorBeat+(now()-anchorTime)*bpm/60000;
   const positive=(n,label,max)=>{if(!Number.isFinite(n)||n<=0||n>max)throw new Error(`Invalid ${label}`);return n;};
-  function setBpm(value){bpm=positive(value,'BPM',999);}
+  function setBpm(value){
+    const next=positive(value,'BPM',999);
+    anchorBeat=currentBeat();anchorTime=now();bpm=next;
+  }
+  positive(bpm,'BPM',999);
+  async function nextBeat(){
+    const target=Math.floor(currentBeat()+0.000001)+1;
+    for(;;){
+      const remaining=target-currentBeat();
+      if(remaining<=0.000001)return;
+      await sleep(Math.min(25,remaining*60000/bpm));
+    }
+  }
   async function beat(count=1){await sleep(positive(count,'beat count',1024)*60000/bpm);}
   async function play(note,{duration=0.5,channel=1,velocity=90}={}){
     const durationMs=Math.round(positive(duration,'duration',128)*60000/bpm);
@@ -40,5 +54,5 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120}) {
     }
     return notes;
   }
-  return {play,beat,setBpm,choose,cycle,scale,log};
+  return {play,beat,nextBeat,setBpm,choose,cycle,scale,log};
 }
