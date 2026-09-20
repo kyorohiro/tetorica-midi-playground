@@ -54,6 +54,8 @@ FM2612 Playgroundとの機能差を整理する。MIDI版は基本的な演奏�
 
 ## 別工程: 外部MIDI Clockとの同期
 
+- [x] macOS用Clock送信ツールを追加。仮想MIDI出力、Start/Stop/Continue、BPM変更、無通知途絶を操作可能。[確認手順](clock_sender.md)。コマンド単体テスト2件。
+
 - [ ] Clock監視・テストから、スクリプト演奏の同期へ拡張する。
 - [x] Start / Continue / Stop・Clock途絶・切断の拍位置管理を定義し、環境非依存の状態管理とテストを追加。詳細は[external_clock.md](external_clock.md)。
 - [x] native受信からTauri ChannelでWorkerへ直接Clockを転送。Run ID・入力接続世代・連番で古い/重複イベントを除外。画面snapshotポーリングとは分離。

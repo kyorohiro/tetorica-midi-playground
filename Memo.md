@@ -67,3 +67,74 @@ DAWによってオクターブの表示名が違う場合がある。
 - Tetoricaにエラーが表示されていれば、その内容を確認する。
 
 終了時はTetoricaの「Stop notes」、続いて「Disconnect」を押す。
+
+## 外部MIDI Clockの確認（テスト送信ツール＋GarageBand）
+
+今回の確認経路は次のとおり。GarageBandは音源として使い、Clockは専用ツールから送る。GarageBandの仮想入力が選べる環境では、上記のIAC設定は不要。
+
+```text
+Tetorica Test Clock → TetoricaのClock input
+TetoricaのNote output → GarageBandの仮想入力 → スピーカー
+```
+
+### 1. 送信ツールを起動する
+
+```sh
+cd /Users/kyorohiro/development8/wfm/hello_ymfm/w/tetorica-midi-playground
+npm run clock:send
+```
+
+`MIDI source: Tetorica Test Clock` が出たら、ターミナルを開いたままにする。起動直後はClock送信が止まっている。
+`--self-test`は付けない（自動テスト後に終了してポートが消える）。
+
+### 2. Tetorica側を接続する
+
+1. 別ターミナルで同じディレクトリから `npm run dev`。
+2. GarageBandでソフトウェア音源トラックを選択する。
+3. Tetoricaの **MIDI settings → Refresh**。
+4. **Clock input — optional** を開き、**Tetorica Test Clock** を選んで **Connect input**。
+5. **Note output** はGarageBandの仮想入力を選ぶ（選択時に自動接続）。
+
+`Tetorica Test Clock`が出るのは入力側。GarageBandが出る出力側とは別の欄なので注意。表示されない場合は送信ツールが起動中か確認し、Refreshする。
+
+### 3. Runしてから送信を開始する
+
+Run fileに次のコードを用意する。
+
+```js
+liveLoop("clock-test", async ({play, nextBeat}) => {
+  await nextBeat();
+  log("beat");
+  await play("C4", {duration: 0.1});
+});
+```
+
+1. **Beat clock → External MIDI (beat waits only)** を選択。
+2. **Run** を押す。
+3. 画面下部に `Waiting for external MIDI Start / Continue.` が表示される。この時点で音が出ないのは正常。
+4. **送信ツールのターミナル**に `start` と入力してEnter。
+5. ターミナルに `Clock sending`、Tetoricaでは発音とConsoleの `beat` を確認する。
+
+GarageBandの再生ボタンやKeyboard input領域のクリックは、この試験では不要。
+
+### 4. テンポ変更・停止・途絶を確認する
+
+送信ツールへ一行ずつ入力する。
+
+| コマンド | 確認する動作 |
+| --- | --- |
+| `bpm 60` | 発音・beatログが約1秒間隔になる |
+| `bpm 120` | 約0.5秒間隔に戻る |
+| `stop` | Runが終了し、発音が止まる |
+| `drop` | StopメッセージなしでClockだけ停止。約1秒後にRunが終了する |
+| `quit` | Stopを送ってツールを終了する |
+
+停止後は **TetoricaでRun → 送信ツールでstart** の順にやり直す。送信中から試験をやり直す場合は、先に送信ツールで `stop`。実行中に再び `start` を送るとRunは終了する仕様。
+
+音が出ないときは、送信ツールの `Clock sending`、Tetorica画面下部の状態、Consoleのエラー、GarageBand側の音源選択を確認する。
+
+現段階では **beat / nextBeatだけが外部Clockに追従**し、`play`の音長はTetorica側のBPMから決めた固定時間。テンポ変更では発音間隔を確認する。
+
+確認状況: 今回はポート表示と基本動作についてユーザーから「大丈夫そう」と報告あり。テンポ変更・Stop・dropの各項目の確認結果とタイミング実測は、別途記録する。
+
+詳しい仕様・自動テストは [Clock送信ツールの手順](docs/issues/clock_sender.md) を参照。

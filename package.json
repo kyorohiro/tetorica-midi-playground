@@ -7,7 +7,9 @@
     "build": "tauri build",
     "test": "node --test test/*.test.mjs && cargo test --manifest-path src-tauri/Cargo.toml",
     "icons": "tauri icon assets/app-icon.png",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "clock:send": "cargo run --manifest-path src-tauri/Cargo.toml --example clock_sender --",
+    "clock:test": "cargo test --manifest-path src-tauri/Cargo.toml --example clock_sender"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

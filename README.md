@@ -168,3 +168,7 @@ Stop, rerun, and output disconnect. Cmd/Ctrl+Enter runs; Shift+Escape stops.
 
 Release packaging and itch.io page draft: [RELEASE.md](RELEASE.md).
 The in-app FILES README is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.
+
+### MIDI Clock test sender (macOS)
+
+Run `npm run clock:send` to create a local **Tetorica Test Clock** MIDI source. No IAC setup or external Clock master is required. Commands: `start`, `stop`, `continue`, `bpm 90`, `drop` (silent dropout), `quit`. See [test instructions](docs/issues/clock_sender.md). `npm run clock:test` checks commands; `npm run clock:send -- --self-test` checks real virtual-port transport.
