@@ -252,3 +252,20 @@ Open `examples/03_context_jsdoc.js` and select it as **Run file** to try the bui
 `context` is the parameter in `liveLoop("name", async context => { ... })`, not a global variable. Use `context.playOutput(instrument, note, options)` in imported helpers or callbacks with explicit parameters to keep notes attached to that loop.
 
 For your own functions, use JSDoc types `MidiOutput`, `MidiPlayOptions`, `MidiNoteOptions`, `MidiNote`, and `TetoricaContext`. `@param`, `@returns` and `@typedef` support completion and hover. Relative JavaScript imports in FILES are available to the editor even before opening their tabs. This does not add npm package imports or runtime type validation. DOM globals such as `screenLeft` are excluded. The plain-text editor fallback has no completion.
+
+## Examples in FILES
+
+Open an example, select its path in **Run file**, then press **Run**. Use **Stop** to end loops. No DAW, output selection or manual Enable is needed for the built-in examples. Existing edited examples are preserved when new examples are added.
+
+| File in `examples/` | What to try |
+| --- | --- |
+| `04_first_note.js` | Start here: one FM note; change pitch, duration or velocity. |
+| `05_live_loop.js` | Repeating melody with a gap. Edit and Apply while playing. |
+| `06_multi_channel.js` | Two parts on YM2612 CH1 and CH2; edit their patches in the YM2612 tab. |
+| `01_multi_output.js` | YM2612 and PSG together, using fixed internal IDs. |
+| `03_context_jsdoc.js` | Loop context and a reusable function with JSDoc types. |
+| `02_assigned_outputs.js` | Built-in outputs by default; comments show how to switch to slots. |
+| `07_external_output.js` | Requires a running MIDI receiver and replacing the placeholder port name. |
+| `08_output_slots.js` | Requires assigning slots 01 and 02 in MIDI connections first. |
+
+The last two examples deliberately demonstrate external setup. Port names are not track names; separate instruments on separate channels depend on the receiver. The built-in YM2612 shares six voices across all MIDI channels. PSG has three tone voices and a noise voice on CH10; its example uses G4 on a tone channel.

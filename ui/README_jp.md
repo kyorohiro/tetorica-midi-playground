@@ -250,3 +250,20 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 `context`は`liveLoop("name", async context => { ... })`で受け取る引数です。グローバル変数ではありません。importした関数や引数ありのcallbackでは`context.playOutput(instrument, note, options)`を使うと、そのループの停止に発音が追従します。
 
 自作関数のJSDocでは`MidiOutput`、`MidiPlayOptions`、`MidiNoteOptions`、`MidiNote`、`TetoricaContext`を使えます。`@param`・`@returns`・`@typedef`による補完とホバーに対応します。FILES内の相対JavaScript importは、未選択のファイルも補完に使います。npmパッケージのimportや実行時の型検証を追加するものではありません。`screenLeft`等のDOM候補は除外し、Monacoを読み込めない場合のテキストエディターでは補完しません。
+
+## FILESのexamples
+
+例を開き、**Run file** でそのパスを選んで **Run**。ループは **Stop** で終了します。内蔵音源の例はDAW・手動Enable・出力選択なしで試せます。保存済みの編集したサンプルは保持します。
+
+| `examples/`内のファイル | 内容 |
+| --- | --- |
+| `04_first_note.js` | 最初はこれ。FMで1音。音程・長さ・velocityを変更。 |
+| `05_live_loop.js` | メロディと休符の繰り返し。編集後Applyで更新。 |
+| `06_multi_channel.js` | YM2612のCH1・CH2で2パート。YM2612タブでCH別の音色を編集。 |
+| `01_multi_output.js` | 固定IDでYM2612とPSGを同時に演奏。 |
+| `03_context_jsdoc.js` | contextとJSDoc付きの自作関数。 |
+| `02_assigned_outputs.js` | 初期状態は内蔵音源。コメントで論理出力への切替を案内。 |
+| `07_external_output.js` | MIDI受信アプリを起動し、コードの仮の名前を実際のポート名へ変更して使用。 |
+| `08_output_slots.js` | MIDI connectionsで01をYM2612、02をPSGへ割り当ててから実行。 |
+
+最後の2例には接続設定が必要です。ポート名とトラック名は別で、CHによる楽器の振り分けは受信側に依存します。内蔵YM2612の6音は全MIDI CHで共有します。PSGは矩形波3音とCH10のノイズ1音で、例では矩形波のG4を使います。
