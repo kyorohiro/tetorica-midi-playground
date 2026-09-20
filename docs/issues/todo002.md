@@ -1,23 +1,48 @@
 # MIDI Playground TODO 002
 
-リリース後に順番に進める改善。現時点では計画のみで、実装は未着手。
+リリース後に順番に進める改善。00のNative YM2612試作を実装中。01以降は未着手。
 既存機能の残課題は [todo.md](todo.md) を参照。
 
 ## 進め方
 
-- 01で演奏先とAPIの責務を固め、02の補完、03のexamples、04のライブラリガイドへ進む。
+- まず00の確認用MIDI受信音源を用意する。その後01で演奏先とAPIの責務を固め、02の補完、03のexamples、04のライブラリガイドへ進む。
 - 各工程で必要な自動テストを追加し、完了した項目と残る制約を更新する。
 - タイミング・停止・所有権は仮想時計や模擬MIDI出力で検証し、手動確認を最小限にする。
 - 既存のグローバル`play()`、Keyboardタブ、Run / Stop / Apply、外部Clockの動作を維持する。
+
+## 00. 内蔵Native YM2612確認用音源
+
+方針更新: 別アプリ・矩形波音源の案から、同じプロセス内のymfm 2台へ変更。WebViewは設定と表示のみ。PCMはNative内で生成・リサンプル・MIXし、CPAL → macOS Core Audioへ出力する。
+
+- [x] ymfmのOPNソースをライセンスと共に同梱し、C++ → Rustの小さなFFIでネイティブビルドする。親リポジトリやWASMファイルへの実行時依存なし。
+- [x] YM2612 A / B各6音。MIDI CH1〜16を受信し、空きvoice割り当て・同音再発音・最古voiceの置換に対応。現段階は固定FM音色。
+- [x] macOS仮想MIDI入力`Tetorica YM2612 A` / `Tetorica YM2612 B`を公開。通常のMIDI outputから選択し、Keyboardや既存playで試せる。
+- [x] Helperの横にYM2612 A / YM2612 B / Mixerタブを追加。各音源のCH発音表示、音源別音量・パン・ミュート、マスター音量、Panic。
+- [x] MIDI connectionsで有効化したときだけ音声とMIDIポートを開始。無効化・アプリ終了で解放。既定音声出力は有効化時に取得する。
+- [x] MIDI受信から音声スレッドへ固定容量キュー。PCMはWebViewへ送らない。過負荷時は全音停止とエラー表示。画面更新は200ms間隔。
+- [x] Note Off、velocity 0、CC120 / CC123、Stop、Panicに対応。DC除去、簡易線形リサンプル、ゲインの平滑化、最終クリップを実装。
+- [x] PCMの発音・A4ピッチ・消音を44.1/48/96kHzで自動テスト。voice置換、CH分離、A/B分離、パン・ミュート、キューあふれ、Stop直後の新規ノートを検証。
+- [ ] 実機で仮想ポート受信 → 音声出力とUI操作を通し確認する。CPU負荷・音切れも測定する。
+- [ ] CH別の音色設定・音量・ミュートは後続。現在のMixerは音源A/B単位。サステイン、Pitch Bend、Program Change、音色編集は未対応。
+- [ ] 切断・デバイス変更時の復旧を実機確認する。現在は無効化→再有効化で再接続。音声デバイス選択UIとメーターは後続。
+
+確認手順: アプリを再起動 → MIDI connectionsでEnable → MIDI設定で`Tetorica YM2612 A`を選択 → KeyboardまたはRunで発音。Bも同様。詳細は[Native synth](native_synth.md)。
+
+### GarageBandへPCMを渡す拡張（後続）
+
+- [ ] BlackHole等の仮想Core Audioデバイスを出力先にし、GarageBandのオーディオトラックで受ける手順を検証する。ドライバーの同梱やインストールは今回行わない。
+- [ ] A/BをGarageBand側で別々にMIXする場合は、合成前の音を別の音声チャンネルへ出す。現段階は内蔵Mixerによるステレオ合成のみ。
+
+MIDIポート名とDAWのトラック名は別。examplesの共通接続先は内蔵音源を使う。GarageBandのトラック別MIDI CH振り分けを前提にしない。
 
 ## 01. 複数MIDI出力・チャンネル
 
 出力ポートとチャンネルをまとめた演奏先をJavaScriptから作成する。以下は希望するAPIの例であり、まだ実行できない。
 
 ```js
-const piano = midi.output("GarageBand", { channel: 1 });
-const bass  = midi.output("GarageBand", { channel: 2 });
-const synth = midi.output("Tetorica YM2612", { channel: 1 });
+const piano = midi.output("Tetorica YM2612 A", { channel: 1 });
+const bass  = midi.output("Tetorica YM2612 A", { channel: 2 });
+const synth = midi.output("Tetorica YM2612 B", { channel: 1 });
 
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.8 });
@@ -60,6 +85,8 @@ liveLoop("fm", async () => {
 
 初心者が開いてRun fileに指定し、そのまま試せるコードを用意する。以下のファイル名は案。
 
+共通の接続先は00の確認用音源とする。最初の例は画面でその出力を選べば動き、複数CH・複数出力の例では確認用音源のポート名とCHを明示する。利用可能なポート一覧の確認方法も案内し、利用者のDAWトラック名を仮定しない。
+
 - [ ] `examples/01_first_note.js`: 選択中のMIDI outputで1音を鳴らす。
 - [ ] `examples/02_live_loop.js`: メロディの繰り返し、拍、音の長さ。
 - [ ] `examples/03_multi_channel.js`: 同じ出力のCH1 / CH2へ送る。
@@ -83,5 +110,5 @@ liveLoop("fm", async () => {
 
 - [ ] 自動テストが通り、既存の演奏・編集機能に回帰がない。
 - [ ] GarageBandなどへの発音とKeyboardタブの共存を実機で確認する。
-- [ ] 複数出力・チャンネルの送信は仮想MIDI受信ツール等で確認し、受信アプリ側の音色設定と切り分ける。
+- [ ] 00の確認用音源で、DAWなしのexamples実行、複数出力・チャンネルの送受信と発音を確認する。受信アプリ側の音色設定と切り分ける。
 - [ ] FILES内のガイド・examples・補完の説明が最終APIと一致している。

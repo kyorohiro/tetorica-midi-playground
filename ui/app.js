@@ -1,3 +1,4 @@
+import {mountSynthRack} from './synth-rack.js';
 import {mountKeyboard} from './keyboard-tab.js';
 import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
 import {keyData} from './keyboard.js';
@@ -10,7 +11,7 @@ import {renderFileTree} from './shared/playground_file_tree.js';
 const invoke=window.__TAURI__.core.invoke;
 const $=id=>document.getElementById(id);
 let auditionKeyboard=null;
-const ui=createPlaygroundUi({...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
+const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
 const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
@@ -59,7 +60,7 @@ function releaseKeys(){
 }
 keyboardPad.addEventListener('blur',releaseKeys);
 window.addEventListener('blur',releaseKeys);
-async function stop(){await auditionKeyboard?.releaseAll();activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
+async function stop(){await auditionKeyboard?.releaseAll();activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');await invoke('synth_panic');}
 async function start(){
   const target=runPath;
   const code=runSource(files,target);
@@ -98,6 +99,7 @@ $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
 async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 $('refresh').onclick=()=>run(refresh);
+mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));});
 let outputConnecting=false;
 async function connectPort(direction){
   const select=$(direction.toLowerCase()), id=select.value;

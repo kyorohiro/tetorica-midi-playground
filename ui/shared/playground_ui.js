@@ -99,6 +99,7 @@ export function createPlaygroundUi(
       button: helpersTab,
       panel: helpersPanel,
     },
+    ...(options.extraTabs || []),
   ];
 
   function setBottomTab(tabName) {

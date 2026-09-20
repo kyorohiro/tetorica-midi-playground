@@ -1,3 +1,5 @@
+mod synth_core;
+mod test_synth;
 mod clock;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::Serialize;
@@ -445,7 +447,12 @@ fn main() {
     });
     tauri::Builder::default()
         .manage(state)
+        .manage(test_synth::Rack::default())
         .invoke_handler(tauri::generate_handler![
+            test_synth::synth_enable,
+            test_synth::synth_mix,
+            test_synth::synth_status,
+            test_synth::synth_panic,
             keyboard_on,
             keyboard_off,
             begin_run,
@@ -464,6 +471,7 @@ fn main() {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let state = window.state::<AppState>();
                 let _ = disconnect(state);
+                let _ = window.state::<test_synth::Rack>().enable(false);
             }
         })
         .run(tauri::generate_context!())

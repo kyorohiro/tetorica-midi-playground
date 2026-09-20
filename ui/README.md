@@ -188,3 +188,7 @@ External `play` now schedules native Note Off by Clock pulse count: durations ar
 Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel 1–16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
 
 Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input above the Code editor is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
+
+## Built-in YM2612 audition (macOS trial)
+
+No DAW is required: open **MIDI connections**, enable **YM2612 A / B**, then choose **Tetorica YM2612 A** in MIDI settings. Play in Keyboard or Run your script. B is a second independent port. Each chip shares six voices across MIDI channels 1–16 and uses a fixed FM patch. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Preset editing, sustain and pitch bend are not supported yet.
