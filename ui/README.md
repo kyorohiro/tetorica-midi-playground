@@ -192,3 +192,34 @@ Switching tabs, changing the channel/layout, leaving the window, Release notes o
 ## Built-in YM2612 audition (macOS trial)
 
 No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six fixed FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Preset editing, sustain and pitch bend are not supported yet.
+
+## Multiple outputs and channels (trial)
+
+Choose `/examples/01_multi_output.js` in Run file and press Run. It enables the native sound rack and plays YM2612 CH1/CH2 plus Sega PSG without a DAW or a manually selected output.
+
+```js
+await enableSoundChip("ym2612");
+await enableSoundChip("sega-psg");
+const piano = midi.output("tetorica-ym2612", { channel: 1 });
+const bass = midi.output("tetorica-ym2612", { channel: 2 });
+const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+liveLoop("piano", async () => {
+  piano.play("C4", { duration: 0.4 });
+  await beat(0.5);
+});
+```
+
+`midi.output()` creates a handle synchronously. Its connection opens on the first `play()`, and handles using the same port share the connection. Names of external MIDI ports are also accepted; missing or ambiguous names are errors. Channels are 1–16 (default 1) and belong to the handle. `play()` uses beats for duration and returns a Promise that resolves after the note duration; awaiting it is optional, and failures are reported in Console and stop the run. At most 16 additional script output connections are allowed. The MIDI panel shows their count separately from the selected Keyboard/global-play output.
+
+`enableSoundChip()` currently starts the shared YM2612 + Sega PSG rack even if only one chip is requested. Repeated calls preserve existing sound/settings. Per-chip enable and logical `MIDI_OUTPUT_01` mappings are not implemented yet. Stop releases script connections/notes but keeps the rack enabled. Changing the MIDI-panel Enable setting stops playback first. To audition with Keyboard afterward, select its output in MIDI settings.
+
+Direct inline, zero-argument, block-body `liveLoop` callbacks automatically bind calls such as `piano.play()` for locally declared `midi.output()` handles to their loop owner. For explicit callbacks or imported helpers, pass the loop-local helper:
+
+```js
+liveLoop("bass", async ({playOutput, beat}) => {
+  playOutput(bass, "C3", {duration: 0.8});
+  await beat(1);
+});
+```
+
+Aliased handles or calls hidden in imported functions are not automatically rewritten. Use `playOutput` to retain individual loop cancellation and note ownership. Global handle calls have whole-Run lifetime. YM2612 currently uses one fixed patch; channel numbers alone do not select different instruments. External applications need their own channel routing.

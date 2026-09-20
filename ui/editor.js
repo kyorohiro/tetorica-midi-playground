@@ -35,6 +35,10 @@ export function createFileEditor(monaco, container, onChange) {
 }
 
 export const helperDocs = {
+  enableSoundChip: 'await enableSoundChip("ym2612" | "sega-psg"): initialize the native sound rack. Existing audio is preserved.',
+  midi: 'midi.output(name, {channel: 1}): output handle. Internal IDs: tetorica-ym2612, tetorica-sega-psg. Call handle.play(note, {duration, velocity}).',
+  playOutput: 'playOutput(handle, note, options): use the loop-local helper for imported functions or explicit liveLoop callbacks.',
+
   play: 'play(note, {duration, channel, velocity}): Promise<void>. Duration in beats; MIDI channel 1–16.',
   beat: 'beat(count = 1): Promise<void>. Wait in beats.',
   nextBeat: 'nextBeat(): Promise<void>. Wait for the next internal beat.',

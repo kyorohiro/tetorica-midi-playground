@@ -190,3 +190,34 @@ MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます
 ## 内蔵YM2612で試す（macOS試験版）
 
 DAWなしで確認できます。**MIDI connections**で**YM2612 + Sega PSG**を有効にし、MIDI設定で**Tetorica YM2612**を選んで、KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16で固定FM音色6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。音色編集・サステイン・Pitch Bendは未対応です。
+
+## 複数音源・複数チャンネル（試作）
+
+Run fileで`/examples/01_multi_output.js`を選びRunしてください。手動EnableやDAWなしで、YM2612のCH1・CH2とSega PSGを同時に鳴らします。
+
+```js
+await enableSoundChip("ym2612");
+await enableSoundChip("sega-psg");
+const piano = midi.output("tetorica-ym2612", { channel: 1 });
+const bass = midi.output("tetorica-ym2612", { channel: 2 });
+const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+liveLoop("piano", async () => {
+  piano.play("C4", { duration: 0.4 });
+  await beat(0.5);
+});
+```
+
+`midi.output()`は同期でハンドルを返し、最初の`play()`で接続します。同じポートの接続は共有します。外部ポートは表示名でも指定でき、不在・同名重複はエラーです。CHは1〜16（省略時1）で、ハンドル作成時に指定します。`play()`のdurationは拍単位で、Promiseは音の長さ分待って完了します。awaitは任意で、失敗はConsoleに表示してRunを停止します。追加のスクリプト接続は最大16ポート。MIDI画面に接続数を表示します。Keyboard・グローバルplayの選択先とは別です。
+
+現段階の`enableSoundChip()`はYM2612＋PSGの共有Rackを起動します。繰り返し呼んでも発音・設定はリセットしません。音源単位の有効化や`MIDI_OUTPUT_01`の割り当てUIは後続です。Stopは演奏とスクリプト接続を停止し、Rackは有効なまま残します。MIDI画面でEnableを切り替える場合は先に演奏を停止します。Keyboardで鳴らす際はMIDI画面で出力を選択してください。
+
+直接記述した引数なし・ブロック形式のliveLoopでは、同じコード内の`const piano = midi.output(...)`と`piano.play(...)`をループ所有者へ自動的に結び付けます。引数ありのコールバックやimportした関数では、ループ専用の`playOutput`を渡してください。
+
+```js
+liveLoop("bass", async ({playOutput, beat}) => {
+  playOutput(bass, "C3", {duration: 0.8});
+  await beat(1);
+});
+```
+
+別名へ代入したハンドルやimport先の呼び出しは自動変換されません。個別ループの停止・所有権を保つには`playOutput`を使います。グローバルなハンドル呼び出しはRun全体に属します。YM2612は現段階では全CHで同じ固定音色です。外部アプリではCH別音色の振り分け設定が必要です。

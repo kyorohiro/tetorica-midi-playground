@@ -23,6 +23,10 @@ struct Session {
     clock: clock::Clock,
     output: Option<Box<dyn NoteOutput>>,
     output_name: Option<String>,
+    output_id: Option<String>,
+    routes: HashMap<u64, Box<dyn NoteOutput>>,
+    route_ids: HashMap<String,u64>,
+    next_route: u64,
     off: Option<Instant>,
     follow: bool,
     last_clock: Option<Instant>,
@@ -31,31 +35,39 @@ struct Session {
     external_clock: bool,
     external_started: bool,
     transport_stop: bool,
-    notes: HashMap<(u8, u8), Instant>,
-    note_owners: HashMap<(u8, u8), u64>,
-    note_ticks: HashMap<(u8, u8), u64>,
+    notes: HashMap<(u64, u8, u8), Instant>,
+    note_owners: HashMap<(u64, u8, u8), u64>,
+    note_ticks: HashMap<(u64, u8, u8), u64>,
     audition: HashMap<(u8,u8),u64>,
 }
 impl Session {
+    fn send_to(&mut self, route:u64, bytes:&[u8])->Result<(),String> {
+        let out=if route==0 { self.output.as_mut() } else { self.routes.get_mut(&route) };
+        out.ok_or("MIDI output is not connected")?.send(bytes)
+    }
+
+    fn release_notes(&mut self, keys:Vec<(u64,u8,u8)>)->Result<(),String> {
+        let mut error=None;
+        for (route,channel,note) in keys {
+            if let Err(e)=self.send_to(route,&[0x80|channel,note,0]) {error.get_or_insert(e);continue;}
+            let key=(route,channel,note);
+            self.notes.remove(&key);self.note_owners.remove(&key);self.note_ticks.remove(&key);
+        }
+        error.map_or(Ok(()),Err)
+    }
     fn stop(&mut self) -> Result<(), String> {
+        let mut error=None;
         let keys:Vec<_>=self.audition.keys().copied().collect();
-        for (channel,note) in keys {if let Some(out)=&mut self.output {out.send(&[0x80|channel,note,0])?;} self.audition.remove(&(channel,note));}
+        for (channel,note) in keys {
+            if let Err(e)=self.send_to(0,&[0x80|channel,note,0]) {error.get_or_insert(e);}
+            else {self.audition.remove(&(channel,note));}
+        }
         if self.off.is_some() {
-            if let Some(out) = &mut self.output {
-                out.send(&[0x80, 60, 0]).map_err(|e| e.to_string())?;
-            }
-            self.off = None;
+            if let Err(e)=self.send_to(0,&[0x80,60,0]) {error.get_or_insert(e);}
+            else {self.off=None;}
         }
-        let keys: Vec<_> = self.notes.keys().copied().collect();
-        for (channel, note) in keys {
-            if let Some(out) = &mut self.output {
-                out.send(&[0x80 | channel, note, 0])?;
-            }
-            self.notes.remove(&(channel, note));
-            self.note_owners.remove(&(channel, note));
-            self.note_ticks.remove(&(channel, note));
-        }
-        Ok(())
+        if let Err(e)=self.release_notes(self.notes.keys().copied().collect()) {error.get_or_insert(e);}
+        error.map_or(Ok(()),Err)
     }
     fn script_note(
         &mut self,
@@ -64,7 +76,8 @@ impl Session {
         channel: u8,
         velocity: u8,
         duration_ms: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> { self.script_note_to(0,run_id,note,channel,velocity,duration_ms) }
+    fn script_note_to(&mut self, route:u64, run_id:u64, note:u8, channel:u8, velocity:u8, duration_ms:u64)->Result<(),String> {
         if run_id != self.run_id || (self.external_clock && (!self.external_started || !self.clock.running || self.transport_stop)) {
             return Err("Run was stopped".into());
         }
@@ -76,19 +89,14 @@ impl Session {
             return Err("Invalid note, channel, velocity or duration (1–10000 ms)".into());
         }
         let channel = channel - 1;
-        let was_audition=self.audition.contains_key(&(channel,note));
-        let out = self.output.as_mut().ok_or("Connect an output first")?;
-        if was_audition || self.notes.contains_key(&(channel, note)) {
-            out.send(&[0x80 | channel, note, 0])?;
-        }
-        out.send(&[0x90 | channel, note, velocity])?;
-        self.audition.remove(&(channel,note));
-        self.note_owners.remove(&(channel, note));
-            self.note_ticks.remove(&(channel, note));
-        self.notes.insert(
-            (channel, note),
-            Instant::now() + Duration::from_millis(duration_ms),
-        );
+        let key=(route,channel,note);
+        let was_audition=route==0 && self.audition.contains_key(&(channel,note));
+        if was_audition || self.notes.contains_key(&key) { self.send_to(route,&[0x80|channel,note,0])?; }
+        self.send_to(route,&[0x90|channel,note,velocity])?;
+        if route==0 {self.audition.remove(&(channel,note));}
+        self.note_owners.remove(&key);
+        self.note_ticks.remove(&key);
+        self.notes.insert(key,Instant::now()+Duration::from_millis(duration_ms));
         Ok(())
     }
     fn owned_note(
@@ -102,17 +110,27 @@ impl Session {
     ) -> Result<(), String> {
         self.script_note(run_id, note, channel, velocity, duration_ms)?;
         if let Some(owner) = owner {
-            self.note_owners.insert((channel - 1, note), owner);
+            self.note_owners.insert((0, channel - 1, note), owner);
         }
         Ok(())
+    }
+    fn routed_note(&mut self,route:u64,run_id:u64,owner:Option<u64>,note:u8,channel:u8,velocity:u8,duration_ms:u64,duration_beats:Option<f64>)->Result<(),String> {
+    if let Some(beats)=duration_beats {
+        if !self.external_clock || !beats.is_finite() || beats<=0.0 || beats>128.0 {return Err("Invalid external note duration".into());}
+    }
+    self.script_note_to(route,run_id,note,channel,velocity,duration_ms)?;
+    let key=(route,channel-1,note);
+    if let Some(owner)=owner {self.note_owners.insert(key,owner);}
+    if let Some(beats)=duration_beats {let ticks=self.clock.ticks; self.note_ticks.insert(key,ticks+(beats*24.0).ceil() as u64);}
+    Ok(())
     }
     fn audition_on(&mut self, id:u64, note:u8, channel:u8, velocity:u8)->Result<(),String> {
         if note>127 || !(1..=16).contains(&channel) || !(1..=127).contains(&velocity) {return Err("Invalid keyboard note".into());}
         let key=(channel-1,note);
         let out=self.output.as_mut().ok_or("Connect a MIDI output first")?;
-        if self.notes.contains_key(&key)||self.audition.contains_key(&key){out.send(&[0x80|key.0,note,0])?;}
+        if self.notes.contains_key(&(0,key.0,key.1))||self.audition.contains_key(&key){out.send(&[0x80|key.0,note,0])?;}
         out.send(&[0x90|key.0,note,velocity])?;
-        self.notes.remove(&key);self.note_ticks.remove(&key);self.note_owners.remove(&key);
+        self.notes.remove(&(0,key.0,key.1));self.note_ticks.remove(&(0,key.0,key.1));self.note_owners.remove(&(0,key.0,key.1));
         self.audition.insert(key,id);Ok(())
     }
     fn audition_off(&mut self,id:u64)->Result<(),String>{
@@ -123,7 +141,7 @@ impl Session {
     fn external_note(&mut self, run_id:u64, owner:Option<u64>, note:u8, channel:u8, velocity:u8, beats:f64) -> Result<(),String> {
         if !self.external_clock || !beats.is_finite() || beats<=0.0 || beats>128.0 {return Err("Invalid external note duration".into());}
         self.owned_note(run_id,owner,note,channel,velocity,10000)?;
-        self.note_ticks.insert((channel-1,note),self.clock.ticks+(beats*24.0).ceil() as u64);
+        self.note_ticks.insert((0,channel-1,note),self.clock.ticks+(beats*24.0).ceil() as u64);
         Ok(())
     }
     fn release_owner(&mut self, run_id: u64, owner: u64) -> Result<(), String> {
@@ -136,15 +154,7 @@ impl Session {
             .filter(|(_, id)| **id == owner)
             .map(|(key, _)| *key)
             .collect();
-        for (channel, note) in keys {
-            if let Some(out) = &mut self.output {
-                out.send(&[0x80 | channel, note, 0])?;
-            }
-            self.notes.remove(&(channel, note));
-            self.note_owners.remove(&(channel, note));
-            self.note_ticks.remove(&(channel, note));
-        }
-        Ok(())
+        self.release_notes(keys)
     }
     fn expire(&mut self, now: Instant) -> Result<(), String> {
         if self.external_clock && self.external_started && (self.transport_stop || !self.clock.running || self.last_clock.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(1))) {
@@ -159,15 +169,7 @@ impl Session {
             .filter(|(key, deadline)| self.note_ticks.get(key).map_or(**deadline <= now, |tick| self.clock.ticks >= *tick))
             .map(|(key, _)| *key)
             .collect();
-        for (channel, note) in keys {
-            if let Some(out) = &mut self.output {
-                out.send(&[0x80 | channel, note, 0])?;
-            }
-            self.notes.remove(&(channel, note));
-            self.note_owners.remove(&(channel, note));
-            self.note_ticks.remove(&(channel, note));
-        }
-        Ok(())
+        self.release_notes(keys)
     }
     fn note(&mut self) -> Result<(), String> {
         self.stop()?;
@@ -297,8 +299,37 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
     s.run_id += 1;
     s.follow = false;
     s.stop()?;
+    s.routes.clear(); s.route_ids.clear();
+    s.output_id=Some(id);
     s.output = Some(Box::new(next));
     s.output_name = Some(name);
+    Ok(())
+}
+#[tauri::command]
+fn script_output(run_id:u64, name:String, state:tauri::State<AppState>, rack:tauri::State<test_synth::Rack>)->Result<u64,String> {
+    let mut s=state.session.lock().unwrap();
+    if s.run_id!=run_id {return Err("Run was stopped".into());}
+    let output=MidiOutput::new("Tetorica Script").map_err(|e|e.to_string())?;
+    let internal=match name.as_str() { "tetorica-ym2612"=>Some("Tetorica YM2612"),"tetorica-sega-psg"=>Some("Tetorica Sega PSG"),_=>None };
+    if internal.is_some() && !rack.status().enabled {return Err("Call await enableSoundChip(...) first".into());}
+    let wanted=internal.unwrap_or(&name);
+    let ports:Vec<_>=output.ports().into_iter().filter(|p|output.port_name(p).ok().as_deref()==Some(wanted)).collect();
+    if ports.len()!=1 {return Err(format!("MIDI output '{}' has {} matches; choose a unique available port",wanted,ports.len()));}
+    let id=ports[0].id();
+    if s.output_id.as_ref()==Some(&id) {return Ok(0);}
+    if let Some(route)=s.route_ids.get(&id) {return Ok(*route);}
+    if s.routes.len()>=16 {return Err("At most 16 script outputs".into());}
+    let connection=output.connect(&ports[0],"Tetorica Script").map_err(|e|e.to_string())?;
+    s.next_route+=1; let route=s.next_route;
+    s.routes.insert(route,Box::new(connection));s.route_ids.insert(id,route);
+    Ok(route)
+}
+#[tauri::command]
+fn enable_sound_chip(run_id:u64, chip:String,state:tauri::State<AppState>,rack:tauri::State<test_synth::Rack>)->Result<(),String> {
+    if !matches!(chip.as_str(),"ym2612"|"sega-psg") {return Err("Unknown sound chip".into());}
+    if state.session.lock().unwrap().run_id!=run_id {return Err("Run was stopped".into());}
+    rack.enable(true)?;
+    if state.session.lock().unwrap().run_id!=run_id {return Err("Run was stopped".into());}
     Ok(())
 }
 #[tauri::command]
@@ -328,7 +359,9 @@ fn stop_notes(state: tauri::State<AppState>) -> Result<(), String> {
     s.external_started=false;
     s.run_id += 1;
     s.follow = false;
-    s.stop()
+    let result=s.stop();
+    if result.is_ok() {s.routes.clear(); s.route_ids.clear();}
+    result
 }
 #[tauri::command]
 fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
@@ -337,6 +370,8 @@ fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
     s.follow = false;
     s.run_id += 1;
     let result = s.stop();
+    s.routes.clear(); s.route_ids.clear(); s.output_id=None;
+    s.notes.clear(); s.note_owners.clear(); s.note_ticks.clear(); s.audition.clear(); s.off=None;
     s.output = None;
     s.output_name = None;
     s.clock = Default::default();
@@ -353,9 +388,7 @@ fn begin_run(external_clock: Option<bool>, state: tauri::State<AppState>) -> Res
     s.transport_stop=false;
     s.follow = false;
     s.stop()?;
-    if s.output.is_none() {
-        return Err("Connect a MIDI output in MIDI settings first".into());
-    }
+    s.routes.clear(); s.route_ids.clear();
     Ok(s.run_id)
 }
 #[tauri::command]
@@ -367,11 +400,11 @@ fn play_midi_note(
     velocity: u8,
     duration_ms: u64,
     duration_beats: Option<f64>,
+    route: Option<u64>,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
     let mut s=state.session.lock().unwrap();
-    if let Some(beats)=duration_beats {s.external_note(run_id,owner,note,channel,velocity,beats)}
-    else {s.owned_note(run_id, owner, note, channel, velocity, duration_ms)}
+    s.routed_note(route.unwrap_or(0),run_id,owner,note,channel,velocity,duration_ms,duration_beats)
 }
 #[tauri::command]
 fn release_loop_notes(
@@ -385,6 +418,7 @@ fn release_loop_notes(
 struct Snapshot {
     clock: clock::Clock,
     output_connected: bool,
+    script_output_count: usize,
     output_name: Option<String>,
     follow: bool,
     clock_present: bool,
@@ -396,6 +430,7 @@ fn snapshot(state: tauri::State<AppState>) -> Snapshot {
     Snapshot {
         clock: s.clock.clone(),
         output_connected: s.output.is_some(),
+        script_output_count: s.routes.len(),
         output_name: s.output_name.clone(),
         follow: s.follow,
         clock_present: s
@@ -457,6 +492,8 @@ fn main() {
             keyboard_off,
             begin_run,
             play_midi_note,
+            script_output,
+            enable_sound_chip,
             release_loop_notes,
             ports,
             connect_input,
@@ -487,6 +524,45 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn multiple_outputs_owners_channels_and_stale_runs() {
+        let a=Arc::new(Mutex::new(Vec::new()));let b=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session::default();
+        s.routes.insert(1,Box::new(Fake(a.clone())));s.routes.insert(2,Box::new(Fake(b.clone())));
+        s.routed_note(1,0,Some(11),60,1,90,100,None).unwrap();
+        s.routed_note(1,0,Some(12),60,2,90,100,None).unwrap();
+        s.routed_note(2,0,Some(13),60,1,90,100,None).unwrap();
+        assert_eq!(s.notes.len(),3);
+        s.release_owner(0,11).unwrap();assert_eq!(s.notes.len(),2);
+        assert_eq!(b.lock().unwrap().len(),1);
+        s.routed_note(2,0,Some(14),60,1,90,100,None).unwrap();
+        s.release_owner(0,13).unwrap();assert!(s.notes.contains_key(&(2,0,60)));
+        s.run_id=1;assert!(s.routed_note(1,0,None,61,1,90,100,None).is_err());
+        s.stop().unwrap();assert!(s.notes.is_empty());
+        assert_eq!(a.lock().unwrap().last().unwrap(),&vec![0x81,60,0]);
+        assert_eq!(b.lock().unwrap().last().unwrap(),&vec![0x80,60,0]);
+    }
+    #[test]
+    fn routed_notes_follow_external_ticks_and_timeout() {
+        let mut s=Session {external_clock:true,external_started:true,last_clock:Some(Instant::now()),..Default::default()};
+        s.clock.running=true;
+        for route in [1,2] {s.routes.insert(route,Box::new(Fake(Arc::new(Mutex::new(Vec::new())))));}
+        s.routed_note(1,0,None,60,1,90,10000,Some(0.5)).unwrap();
+        s.routed_note(2,0,None,60,1,90,10000,Some(4.0)).unwrap();
+        s.clock.ticks=12;s.expire(Instant::now()).unwrap();
+        assert_eq!(s.notes.len(),1);assert!(s.notes.contains_key(&(2,0,60)));
+        s.expire(Instant::now()+Duration::from_secs(2)).unwrap();assert!(s.notes.is_empty());
+    }
+    #[test]
+    fn failed_output_does_not_block_other_note_offs() {
+        struct Broken;
+        impl NoteOutput for Broken {fn send(&mut self,_:&[u8])->Result<(),String>{Err("unplugged".into())}}
+        let mut s=Session::default();let messages=Arc::new(Mutex::new(Vec::new()));
+        s.routes.insert(1,Box::new(Broken));s.routes.insert(2,Box::new(Fake(messages.clone())));
+        s.notes.insert((1,0,60),Instant::now());s.notes.insert((2,0,60),Instant::now());
+        assert!(s.stop().is_err());assert!(!s.notes.contains_key(&(2,0,60)));
+        assert_eq!(messages.lock().unwrap().as_slice(),&[vec![0x80,60,0]]);
     }
     #[test]
     fn keyboard_holds_polyphony_and_protects_retriggered_notes() {
@@ -525,7 +601,7 @@ mod tests {
         s.clock.running=true;s.last_clock=Some(origin);
         s.external_note(0,Some(1),60,1,90,4.0).unwrap();
         s.external_note(0,Some(2),60,1,90,8.0).unwrap();
-        s.release_owner(0,1).unwrap();assert_eq!(s.note_ticks.get(&(0,60)),Some(&192));
+        s.release_owner(0,1).unwrap();assert_eq!(s.note_ticks.get(&(0,0,60)),Some(&192));
         s.expire(origin+Duration::from_millis(999)).unwrap();assert_eq!(s.notes.len(),1);
         s.expire(origin+Duration::from_millis(1000)).unwrap();assert!(s.notes.is_empty());assert!(s.note_ticks.is_empty());
         let count=messages.lock().unwrap().len();
@@ -580,7 +656,7 @@ mod tests {
         assert_eq!(s.notes.len(), 2);
         s.release_owner(3, 1).unwrap();
         assert_eq!(*messages.lock().unwrap(), vec![vec![0x81, 64, 0]]);
-        assert!(s.notes.contains_key(&(0, 60)));
+        assert!(s.notes.contains_key(&(0,0, 60)));
         s.release_owner(3, 2).unwrap();
         assert!(s.notes.is_empty());
         assert!(s.note_owners.is_empty());

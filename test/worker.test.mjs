@@ -224,3 +224,54 @@ test('Apply preserves other loops and cancels the replaced callback after its aw
   }catch(e){fail(e);}});
  });}finally{await w.terminate();}
 });
+
+test('outer output handles preserve parallel loop ownership across await',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ const notes=[],released=[];
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('routing timeout')),3000);
+  const code=`
+   await enableSoundChip('ym2612');
+   await enableSoundChip('sega-psg');
+   const fm=midi.output('tetorica-ym2612',{channel:2});
+   const psg=midi.output('tetorica-sega-psg',{channel:3});
+   liveLoop('fm',async()=>{await beat(0.004);await fm.play('C4',{duration:0.002});await beat(10);});
+   liveLoop('psg',async()=>{await beat(0.002);await psg.play('E4',{duration:0.002});await beat(10);});
+   await beat(0.05);stopAllLoops();
+  `;
+  w.on('error',reject);w.on('message',m=>{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code});
+   if(m.type==='enable-chip')w.postMessage({type:'reply',id:m.id});
+   if(m.type==='output')w.postMessage({type:'reply',id:m.id,value:m.payload.name==='tetorica-ym2612'?1:2});
+   if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='release')released.push(m.owner);
+   if(m.type==='error'){clearTimeout(timer);reject(Error(m.text));}
+   if(m.type==='done'){clearTimeout(timer);resolve();}
+  });
+ });
+ assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,2,1],[2,3,2]]);
+ assert.deepEqual(released,[1,2]);
+ }finally{await w.terminate();}
+});
+
+test('bundled multi-output example initializes both chips and sends three independent parts',async()=>{
+ const {bundledExamples}=await import('../ui/example-files.js');
+ const {readFile}=await import('node:fs/promises');
+ const example=bundledExamples['/examples/01_multi_output.js'];
+ assert.equal(example,await readFile(new URL('../ui/examples/01_multi_output.js',import.meta.url),'utf8'));
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));const notes=[],chips=[];
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('example timeout')),3000);
+  w.on('error',reject);w.on('message',m=>{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code:example+'\nawait beat(0.1);stopAllLoops();'});
+   if(m.type==='enable-chip'){chips.push(m.payload.chip);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='output')w.postMessage({type:'reply',id:m.id,value:m.payload.name==='tetorica-ym2612'?1:2});
+   if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='error'){clearTimeout(timer);reject(Error(m.text));}
+   if(m.type==='done'){clearTimeout(timer);resolve();}
+  });
+ });
+ assert.deepEqual(chips,['ym2612','sega-psg']);
+ assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,1,1],[1,2,2],[2,1,3]]);
+ }finally{await w.terminate();}
+});

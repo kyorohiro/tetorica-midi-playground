@@ -1,3 +1,4 @@
+import {bundledExamples} from './example-files.js';
 import {mountSynthRack} from './synth-rack.js';
 import {mountKeyboard} from './keyboard-tab.js';
 import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
@@ -17,6 +18,7 @@ ui.installBottomTabHandlers();ui.setBottomTab('code');
 const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
 let files={...defaults};
 try{const stored=JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
+for(const [path,code] of Object.entries(bundledExamples))if(!Object.hasOwn(files,path))files[path]=code;
 if(!Object.hasOwn(files,'/lead.js')) files['/lead.js']=leadExample;
 files=withGuide(ensureEntry(files, leadExample));
 let runPath="/index.js";
@@ -40,7 +42,7 @@ $('saveFile').onclick=()=>{const url=URL.createObjectURL(new Blob([files[selecte
 $('expandButton').onclick=()=>{const expanded=document.body.classList.toggle('expanded');$('expandButton').setAttribute('aria-pressed',String(expanded));$('expandButton').textContent=expanded?'Collapse':'Expand';};
 $('midiSettings').onclick=()=>ui.setBottomTab('operator');
 $('midiConnection').onclick=()=>ui.setBottomTab('operator');
-function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;}
+function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;$('scriptOutputStatus').textContent=`Script outputs: ${snapshot?.script_output_count??0} additional connection(s)`;}
 $('clearConsole').onclick=()=>ui.clearConsole();
 async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLine(String(e));}}
 let worker=null,epoch=0,activeRunId=null,inputGeneration=0;
@@ -77,6 +79,13 @@ async function start(){
   current.onmessage=async({data})=>{
     if(current!==worker||ticket!==epoch)return;
     if(data.type==='waiting-clock'){ui.setRuntimeState('Waiting');ui.setStatus('Waiting for external MIDI Start / Continue.');}
+    else if(data.type==='enable-chip'||data.type==='output'){
+      try {
+        const value=await enqueueMidi(()=>invoke(data.type==='enable-chip'?'enable_sound_chip':'script_output',{...data.payload,runId}));
+        if(current===worker&&ticket===epoch)current.postMessage({type:'reply',id:data.id,value});
+        if(data.type==='enable-chip')await refresh();
+      }catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
+    }
     else if(data.type==='note'){
       if(++inFlight>64){await run(stop);ui.setStatus('Too many concurrent notes');return;}
       try{await enqueueMidi(()=>invoke('play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
@@ -99,7 +108,7 @@ $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
 async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 $('refresh').onclick=()=>run(refresh);
-mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));});
+mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));},stop);
 let outputConnecting=false;
 async function connectPort(direction){
   const select=$(direction.toLowerCase()), id=select.value;

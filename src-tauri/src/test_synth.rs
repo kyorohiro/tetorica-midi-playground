@@ -97,7 +97,7 @@ impl Drop for Running {
 pub struct Rack(Mutex<Option<Running>>);
 #[derive(Serialize)]
 pub struct Status {
-    enabled: bool,
+    pub enabled: bool,
     active_channels: [u32; 2],
     error: bool,
 }

@@ -1,3 +1,4 @@
+import {createOutputApi} from './midi-output.js';
 import {bindLoopContext} from './loop-context.js';
 import {createClockWait} from './clock-wait.js';
 import {createClockReceiver} from './clock-receiver.js';
@@ -10,17 +11,18 @@ installPlaygroundExecutionGuards(globalThis);
 let sequence=0,evaluate=null,evaluating=false;
 let keyboard=null,clockReceiver=null,external=null;
 const pending=new Map();
-const send=payload=>new Promise((resolve,reject)=>{
+const request=(type,payload)=>new Promise((resolve,reject)=>{
   if(pending.size>=64){reject(new Error('Too many concurrent MIDI requests'));return;}
-  const id=++sequence;pending.set(id,{resolve,reject});postMessage({type:'note',id,payload});
+  const id=++sequence;pending.set(id,{resolve,reject});postMessage({type,id,payload});
 });
+const send=payload=>request('note',payload);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 onmessage=async ({data})=>{
   if(data.type==='clock'){if(external)external.receive(data.event);else clockReceiver?.receive(data.event);return;}
   if(data.type==='keyboard'){await keyboard?.dispatch(data.event);return;}
   if(data.type==='reply'){
     const p=pending.get(data.id);pending.delete(data.id);
-    if(p)data.error?p.reject(new Error(data.error)):p.resolve();return;
+    if(p)data.error?p.reject(new Error(data.error)):p.resolve(data.value);return;
   }
   if(data.type==='update'){if(evaluate&&!evaluating)await evaluate(data);else postMessage({type:'log',text:'Apply skipped: previous script evaluation is still running.'});return;}
   if(data.type!=='run')return;
@@ -39,12 +41,14 @@ onmessage=async ({data})=>{
       await external.beat(Math.ceil(duration*24)/24);
     };
   }
+  const outputs=createOutputApi({request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
+  Object.assign(api,{midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
     // Share the Run clock; keep cancellation and cycle state local to this loop.
     let slot=0;const cycles=new Map();
-    const helpers={...api};
+    const helpers={...api,playOutput:outputs.scoped(check,owner)};
     Object.assign(helpers,external?{beat:count=>external.beat(count,check),nextBeat:()=>external.nextBeat(check)}:api.createLoopTiming(check));
     helpers.play=async(note,options)=>{
       check();

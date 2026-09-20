@@ -1,5 +1,5 @@
 // UI controls only. MIDI, ymfm, resampling and mixing live in the native process.
-export function mountSynthRack(invoke,refresh,onError) {
+export function mountSynthRack(invoke,refresh,onError,beforeChange=async()=>{}) {
   const $=id=>document.getElementById(id);
   const volumes=[0.7,0.7], pans=[0,0],muted=[false,false];let master=0.25,busy=false;
   const names=['YM2612','Sega PSG'];
@@ -10,7 +10,7 @@ export function mountSynthRack(invoke,refresh,onError) {
   fetch('./ymfm-LICENSE.txt').then(r=>{if(!r.ok)throw new Error('License unavailable');return r.text();}).then(text=>$('ymfmLicense').textContent=text).catch(onError);
   async function mix(){if(!$('synthEnable').checked)return;await invoke('synth_mix',{volume:volumes.map((v,i)=>muted[i]?0:v),pan:pans,master});}
   $('synthEnable').onchange=async()=>{if(busy)return;busy=true;$('synthEnable').disabled=true;
-    try{await invoke('synth_enable',{enabled:$('synthEnable').checked});await mix();await refresh();}
+    try{await beforeChange();await invoke('synth_enable',{enabled:$('synthEnable').checked});await mix();await refresh();}
     catch(e){onError(e);}finally{busy=false;$('synthEnable').disabled=false;await poll();}
   };
   for(let i=0;i<2;i++){
