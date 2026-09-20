@@ -30,7 +30,7 @@ impl Default for Shared {
             error: AtomicBool::new(false),
             volume: std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits())),
             pan: std::array::from_fn(|_| AtomicU32::new(0f32.to_bits())),
-            master: AtomicU32::new(0.25f32.to_bits()),
+            master: AtomicU32::new(0.35f32.to_bits()),
             active: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }

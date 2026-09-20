@@ -430,6 +430,8 @@ impl Instrument {
         }
     }
 }
+// Balance the default FM patch against PSG without changing its operator timbre.
+const MIXER_INPUT_GAIN: [f32; 2] = [8.0, 1.0];
 pub struct Mixer {
     pub synths: [Instrument; 2],
     gain: [[f32; 2]; 2],
@@ -454,7 +456,7 @@ impl Mixer {
             ];
             for c in 0..2 {
                 self.gain[i][c] += (target[c] * master - self.gain[i][c]) * 0.002;
-                result[c] += pcm[c] * self.gain[i][c];
+                result[c] += pcm[c] * MIXER_INPUT_GAIN[i] * self.gain[i][c];
             }
         }
         result.map(|s| s.clamp(-1.0, 1.0))
@@ -620,6 +622,31 @@ mod tests {
         assert_eq!(s.sample(), [0.0; 2]);
         s.midi(&[0x90, 255, 100]);
         assert_eq!(s.active(), 0);
+    }
+    #[test]
+    fn default_mixer_levels() {
+        let mut levels = [0.0f32; 2];
+        for port in 0..2 {
+            let mut m = Mixer::new(48000).unwrap();
+            m.synths[port].midi(&[0x90, 69, 90]);
+            for _ in 0..4800 { m.sample([0.7; 2], [0.0; 2], 0.35); }
+            for _ in 0..48000 {
+                let v = m.sample([0.7; 2], [0.0; 2], 0.35)[0];
+                levels[port] += v * v;
+            }
+            levels[port] = (levels[port] / 48000.0).sqrt();
+        }
+        assert!(levels[0] > 0.02 && levels[0] < 0.08, "FM RMS: {}", levels[0]);
+        assert!(levels[0] / levels[1] > 0.5 && levels[0] / levels[1] < 1.5);
+        let mut m = Mixer::new(48000).unwrap();
+        for note in [48, 55, 60, 64, 67, 72] { m.synths[0].midi(&[0x90, note, 127]); }
+        for note in [60, 64, 67] { m.synths[1].midi(&[0x90, note, 127]); }
+        m.synths[1].midi(&[0x99, 36, 127]);
+        let mut peak = 0.0f32;
+        for _ in 0..48000 {
+            for v in m.sample([0.7; 2], [0.0; 2], 0.35) { peak = peak.max(v.abs()); }
+        }
+        assert!(peak < 0.95, "Default polyphonic mix peak: {peak}");
     }
     #[test]
     fn mixer_ports_pan_and_mute() {
