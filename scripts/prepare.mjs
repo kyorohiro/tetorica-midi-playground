@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile,cp} from 'node:fs/promises';
 const base=new URL('../',import.meta.url);
 const guides={};
 for(const name of ['README.md','README_jp.md']) guides['/'+name]=await readFile(new URL('ui/'+name,base),'utf8');
@@ -7,3 +7,6 @@ await writeFile(new URL('ui/guide.js',base),`// Generated from README.md / READM
 await mkdir(new URL('ui/vendor/',base),{recursive:true});
 await copyFile(new URL('node_modules/es-module-lexer/dist/lexer.minimal.asm.js',base),new URL('ui/vendor/module-lexer.js',base));
 await copyFile(new URL('node_modules/es-module-lexer/LICENSE',base),new URL('ui/vendor/module-lexer.LICENSE',base));
+
+await cp(new URL('node_modules/monaco-editor/min/vs',base),new URL('ui/vendor/monaco/vs',base),{recursive:true});
+for (const name of ['LICENSE','ThirdPartyNotices.txt']) await copyFile(new URL('node_modules/monaco-editor/'+name,base),new URL('ui/vendor/monaco/'+name,base));

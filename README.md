@@ -8,7 +8,7 @@ sends MIDI note 60 on channel 1 for 250 ms. The optional test pattern emits that
 note at each received 24-clock boundary (first note after 24 ticks).
 
 The FM2612-style interface now includes Code / Console / MIDI / Helper tabs,
-Run / Stop, a local file list, JS import/export and an expandable text editor.
+Run / Stop, a local file list, JS import/export and an expandable Monaco editor with MIDI helper completion.
 The tab controller and file tree are snapshots of the original Playground modules
 under `ui/shared`; the original Browser application is unchanged. Monaco is not
 yet included; the editor currently uses a textarea.

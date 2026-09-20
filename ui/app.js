@@ -1,3 +1,4 @@
+import {loadMonaco,createFileEditor,registerHelpers} from './editor.js';
 import {keyData} from './keyboard.js';
 import {connectionStatus} from './connection.js';
 import {leadExample} from './examples.js';
@@ -21,9 +22,10 @@ function refreshRunFiles(){
 }
 refreshRunFiles();
 $('runFile').onchange=()=>{runPath=$('runFile').value;};
+let codeEditor=null;
 let selected="/README.md";const expanded=new Map();
 function persist(){try{localStorage.setItem('midi-files',JSON.stringify(files));}catch{ui.setStatus('Local save failed. Use Export JS to save your code.');}}
-function openFile(path){selected=path;$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});}
+function openFile(path){selected=path;codeEditor?.open(path,files[path],isGuide(path));$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});}
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;files[selected]=$('editor').value;persist();};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
@@ -85,7 +87,7 @@ async function start(){
   current.postMessage({type:'run',code,bpm,path:target,files:{...files}});
 }
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}});
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
 async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 $('refresh').onclick=()=>run(refresh);
 let outputConnecting=false;
@@ -115,3 +117,16 @@ $('follow').onchange=()=>run(async()=>{const enabled=$('follow').checked;await s
 let polling=false;
 setInterval(async()=>{if(polling)return;polling=true;try{const snapshot=await invoke('snapshot');$('clock').textContent=JSON.stringify(snapshot,null,2);showConnection(snapshot);}catch(e){showConnection(null);ui.setStatus(String(e));}finally{polling=false;}},100);
 run(refresh);
+
+// Keep the textarea usable while the locally bundled editor loads or if it fails.
+loadMonaco().then(monaco=>{
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({noSemanticValidation:true,noSyntaxValidation:true});
+  registerHelpers(monaco);
+  const container=document.createElement('div');container.id='monacoEditor';
+  $('editor').after(container);
+  try {
+    codeEditor=createFileEditor(monaco,container,(path,text)=>{files[path]=text;persist();});
+    codeEditor.open(selected,files[selected],isGuide(selected));
+    $('editor').hidden=true;
+  } catch(error) {container.remove();codeEditor=null;throw error;}
+}).catch(error=>ui.logLine(String(error)));

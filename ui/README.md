@@ -162,3 +162,7 @@ for (const note of notes) await play(note, {duration: 0.25});
 The Run file uses `await import()` with a literal relative path. Imported `.js`/`.mjs` modules can use static imports, re-exports and dynamic imports with `./` or `../` paths inside FILES. Include the extension. Each module is evaluated once per Run; edits take effect on the next Run. All referenced files are resolved before execution, including conditional imports.
 
 Pass music helpers as function arguments when a module needs them; modules do not inherit the Run file’s `play`, `beat`, etc. Circular imports, computed paths, npm/external URLs, import attributes and `import.meta` are not supported. Import nesting is limited to 64. Run files cannot use static imports or exports.
+
+## Editor
+
+Monaco provides JavaScript highlighting, search (Command/Ctrl+F), completion (Ctrl+Space), and per-file undo and cursor history. MIDI helper suggestions describe this app’s API. Guides remain read-only. Command/Ctrl+Enter runs the selected Run file; Shift+Escape stops. Editor assets are bundled locally, with a textarea fallback if loading fails. JavaScript type/syntax diagnostics are disabled because Run files execute inside an async function with injected helpers. Cross-module type resolution is not provided.

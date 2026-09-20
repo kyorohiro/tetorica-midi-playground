@@ -6,3 +6,7 @@ License: MIT, reproduced in `module-lexer.LICENSE`.
 
 Regenerate from the lockfile installation with `node scripts/prepare.mjs`.
 This parses module references without treating comments or strings as imports.
+
+# Monaco Editor
+
+Monaco Editor 0.52.2 (MIT) is copied from the locked npm dependency into the ignored `monaco/` directory by `scripts/prepare.mjs`. Both LICENSE and ThirdPartyNotices.txt are bundled there. Upstream: https://github.com/microsoft/monaco-editor
