@@ -189,4 +189,4 @@ MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます
 
 ## 内蔵YM2612で試す（macOS試験版）
 
-DAWなしで確認できます。**MIDI connections**で**YM2612 A / B**を有効にし、MIDI設定で**Tetorica YM2612 A**を選んで、KeyboardまたはRunで演奏してください。Bは独立したもう1つのポートです。各音源はMIDI CH1〜16で6音を共有する固定FM音色です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。音色編集・サステイン・Pitch Bendは未対応です。
+DAWなしで確認できます。**MIDI connections**で**YM2612 + Sega PSG**を有効にし、MIDI設定で**Tetorica YM2612**を選んで、KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16で固定FM音色6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。音色編集・サステイン・Pitch Bendは未対応です。

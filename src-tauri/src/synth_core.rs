@@ -202,14 +202,157 @@ impl Synth {
         })
     }
 }
+extern "C" {
+    fn rack_psg_new(rate: u32) -> *mut c_void;
+    fn rack_psg_delete(p: *mut c_void);
+    fn rack_psg_reset(p: *mut c_void);
+    fn rack_psg_write(p: *mut c_void, value: u32);
+    fn rack_psg_sample(p: *mut c_void, stereo: *mut f32);
+}
+pub struct Psg {
+    chip: NonNull<c_void>,
+    voices: [Voice; 4],
+    serial: u64,
+}
+// Exclusively owned by the audio thread; no callbacks or shared mutable state.
+unsafe impl Send for Psg {}
+impl Drop for Psg {
+    fn drop(&mut self) {
+        unsafe { rack_psg_delete(self.chip.as_ptr()) }
+    }
+}
+impl Psg {
+    fn new(rate: u32) -> Result<Self, String> {
+        if rate == 0 {
+            return Err("Invalid sample rate".into());
+        }
+        Ok(Self {
+            chip: NonNull::new(unsafe { rack_psg_new(rate) }).ok_or("PSG allocation failed")?,
+            voices: [Voice::default(); 4],
+            serial: 0,
+        })
+    }
+    fn write(&mut self, v: u32) {
+        unsafe { rack_psg_write(self.chip.as_ptr(), v) }
+    }
+    fn mute(&mut self, i: usize) {
+        self.write(0x9f | ((i as u32) << 5));
+        self.voices[i].held = false;
+    }
+    fn midi(&mut self, bytes: &[u8]) {
+        if bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
+            return;
+        }
+        let ch = bytes[0] & 15;
+        let note = bytes[1];
+        match bytes[0] & 0xf0 {
+            0x90 if bytes[2] > 0 => {
+                // CH10 is a monophonic fixed white-noise percussion voice.
+                let i = if ch == 9 {
+                    3
+                } else {
+                    self.voices[..3]
+                        .iter()
+                        .position(|v| v.held && v.channel == ch && v.note == note)
+                        .or_else(|| self.voices[..3].iter().position(|v| !v.held))
+                        .unwrap_or_else(|| (0..3).min_by_key(|i| self.voices[*i].age).unwrap())
+                };
+                self.mute(i);
+                if i == 3 {
+                    self.write(0xe5);
+                } else {
+                    let hz = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
+                    let period = (3_579_545.0 / (32.0 * hz)).round().clamp(1.0, 1023.0) as u32;
+                    self.write(0x80 | ((i as u32) << 5) | (period & 15));
+                    self.write(period >> 4);
+                }
+                let attenuation = (-20.0 * (bytes[2] as f64 / 127.0).log10() / 2.0)
+                    .round()
+                    .clamp(0.0, 14.0) as u32;
+                self.write(0x90 | ((i as u32) << 5) | attenuation);
+                self.serial += 1;
+                self.voices[i] = Voice {
+                    held: true,
+                    channel: ch,
+                    note,
+                    age: self.serial,
+                };
+            }
+            0x80 | 0x90 => {
+                for i in 0..4 {
+                    let v = self.voices[i];
+                    if v.held && v.channel == ch && v.note == note {
+                        self.mute(i);
+                    }
+                }
+            }
+            0xb0 if note == 120 || note == 123 => {
+                for i in 0..4 {
+                    if self.voices[i].channel == ch {
+                        self.mute(i);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fn panic(&mut self) {
+        unsafe { rack_psg_reset(self.chip.as_ptr()) };
+        self.voices = [Voice::default(); 4];
+    }
+    fn active(&self) -> u32 {
+        self.voices
+            .iter()
+            .filter(|v| v.held)
+            .fold(0, |m, v| m | (1 << v.channel))
+    }
+    fn sample(&mut self) -> [f32; 2] {
+        let mut s = [0.0; 2];
+        unsafe { rack_psg_sample(self.chip.as_ptr(), s.as_mut_ptr()) };
+        s
+    }
+}
+pub enum Instrument {
+    Ym2612(Synth),
+    SegaPsg(Psg),
+}
+impl Instrument {
+    pub fn midi(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Ym2612(s) => s.midi(bytes),
+            Self::SegaPsg(s) => s.midi(bytes),
+        }
+    }
+    pub fn panic(&mut self) {
+        match self {
+            Self::Ym2612(s) => s.panic(),
+            Self::SegaPsg(s) => s.panic(),
+        }
+    }
+    pub fn active(&self) -> u32 {
+        match self {
+            Self::Ym2612(s) => s.active(),
+            Self::SegaPsg(s) => s.active(),
+        }
+    }
+    fn sample(&mut self) -> [f32; 2] {
+        match self {
+            Self::Ym2612(s) => s.sample(),
+            Self::SegaPsg(s) => s.sample(),
+        }
+    }
+}
 pub struct Mixer {
-    pub synths: [Synth; 2],
+    pub synths: [Instrument; 2],
     gain: [[f32; 2]; 2],
 }
 impl Mixer {
     pub fn new(rate: u32) -> Result<Self, String> {
         Ok(Self {
-            synths: [Synth::new(rate)?, Synth::new(rate)?],
+            synths: [
+                Instrument::Ym2612(Synth::new(rate)?),
+                Instrument::SegaPsg(Psg::new(rate)?),
+            ],
             gain: [[0.0; 2]; 2],
         })
     }
@@ -270,6 +413,58 @@ mod tests {
         s.midi(&[0x90, 255, 90]);
         assert_eq!(s.active(), 0b1111000);
         s.panic();
+        assert_eq!(s.active(), 0);
+    }
+    #[test]
+    fn psg_pitch_velocity_and_silence() {
+        for rate in [44100, 48000, 96000] {
+            let mut s = Psg::new(rate).unwrap();
+            s.midi(&[0x90, 69, 127]);
+            let samples: Vec<_> = (0..rate / 2).map(|_| s.sample()[0]).collect();
+            let crossings = samples
+                .windows(2)
+                .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+                .count();
+            assert!((218..=222).contains(&crossings), "{rate}: {crossings}");
+            let loud: f32 = samples.iter().map(|v| v.abs()).sum::<f32>() / samples.len() as f32;
+            s.midi(&[0x90, 69, 32]);
+            let soft: f32 =
+                (0..rate / 2).map(|_| s.sample()[0].abs()).sum::<f32>() / (rate / 2) as f32;
+            assert!(soft > 0.0 && soft < loud / 2.0);
+            s.midi(&[0x90, 69, 0]);
+            assert_eq!(s.active(), 0);
+            for _ in 0..100 {
+                assert_eq!(s.sample(), [0.0; 2]);
+            }
+        }
+    }
+    #[test]
+    fn psg_three_tones_and_independent_noise_ownership() {
+        let mut s = Psg::new(48000).unwrap();
+        for ch in 0..4 {
+            s.midi(&[0x90 | ch, 69, 100]);
+        }
+        assert_eq!(s.active(), 0b1110);
+        s.midi(&[0x80, 69, 0]); // stolen note must not silence its replacement
+        assert_eq!(s.active(), 0b1110);
+        s.midi(&[0x99, 36, 100]);
+        assert_eq!(s.active(), 0b1110 | (1 << 9));
+        s.midi(&[0x99, 38, 100]);
+        s.midi(&[0x89, 36, 0]);
+        assert_eq!(s.active(), 0b1110 | (1 << 9));
+        for ch in 1..4 {
+            s.midi(&[0xb0 | ch, 123, 0]);
+        }
+        assert_eq!(s.active(), 1 << 9);
+        assert!((0..4800).any(|_| s.sample()[0].abs() > 0.01));
+        s.midi(&[0xb9, 120, 0]);
+        assert_eq!(s.active(), 0);
+        assert_eq!(s.sample(), [0.0; 2]);
+        s.midi(&[0x99, 42, 100]);
+        s.panic();
+        assert_eq!(s.active(), 0);
+        assert_eq!(s.sample(), [0.0; 2]);
+        s.midi(&[0x90, 255, 100]);
         assert_eq!(s.active(), 0);
     }
     #[test]

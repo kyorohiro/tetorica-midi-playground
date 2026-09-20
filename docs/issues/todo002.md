@@ -12,26 +12,26 @@
 
 ## 00. 内蔵Native YM2612確認用音源
 
-方針更新: 別アプリ・矩形波音源の案から、同じプロセス内のymfm 2台へ変更。WebViewは設定と表示のみ。PCMはNative内で生成・リサンプル・MIXし、CPAL → macOS Core Audioへ出力する。
+方針更新: 別アプリ・矩形波音源の案から、同じプロセス内のYM2612 + Sega PSGへ変更。WebViewは設定と表示のみ。PCMはNative内で生成・リサンプル・MIXし、CPAL → macOS Core Audioへ出力する。
 
 - [x] ymfmのOPNソースをライセンスと共に同梱し、C++ → Rustの小さなFFIでネイティブビルドする。親リポジトリやWASMファイルへの実行時依存なし。
-- [x] YM2612 A / B各6音。MIDI CH1〜16を受信し、空きvoice割り当て・同音再発音・最古voiceの置換に対応。現段階は固定FM音色。
-- [x] macOS仮想MIDI入力`Tetorica YM2612 A` / `Tetorica YM2612 B`を公開。通常のMIDI outputから選択し、Keyboardや既存playで試せる。
-- [x] Helperの横にYM2612 A / YM2612 B / Mixerタブを追加。各音源のCH発音表示、音源別音量・パン・ミュート、マスター音量、Panic。
+- [x] YM2612は固定FM音色6音。Sega PSGは矩形波3音（CH1〜9 / 11〜16）と固定ノイズ1音（CH10）。空きvoice割り当て・同音再発音・最古voiceの置換に対応。既存Sega PSGコアをNativeビルドして再利用。
+- [x] macOS仮想MIDI入力`Tetorica YM2612` / `Tetorica Sega PSG`を公開。通常のMIDI outputから選択し、Keyboardや既存playで試せる。
+- [x] Helperの横にYM2612 / Sega PSG / Mixerタブを追加。各音源のCH発音表示、音源別音量・パン・ミュート、マスター音量、Panic。
 - [x] MIDI connectionsで有効化したときだけ音声とMIDIポートを開始。無効化・アプリ終了で解放。既定音声出力は有効化時に取得する。
 - [x] MIDI受信から音声スレッドへ固定容量キュー。PCMはWebViewへ送らない。過負荷時は全音停止とエラー表示。画面更新は200ms間隔。
 - [x] Note Off、velocity 0、CC120 / CC123、Stop、Panicに対応。DC除去、簡易線形リサンプル、ゲインの平滑化、最終クリップを実装。
-- [x] PCMの発音・A4ピッチ・消音を44.1/48/96kHzで自動テスト。voice置換、CH分離、A/B分離、パン・ミュート、キューあふれ、Stop直後の新規ノートを検証。
+- [x] PCMの発音・A4ピッチ・消音を44.1/48/96kHzで自動テスト。voice置換、CH分離、FM/PSG分離、パン・ミュート、キューあふれ、Stop直後の新規ノートを検証。
 - [ ] 実機で仮想ポート受信 → 音声出力とUI操作を通し確認する。CPU負荷・音切れも測定する。
-- [ ] CH別の音色設定・音量・ミュートは後続。現在のMixerは音源A/B単位。サステイン、Pitch Bend、Program Change、音色編集は未対応。
+- [ ] CH別の音色設定・音量・ミュートは後続。現在のMixerは音源単位。サステイン、Pitch Bend、Program Change、音色編集は未対応。
 - [ ] 切断・デバイス変更時の復旧を実機確認する。現在は無効化→再有効化で再接続。音声デバイス選択UIとメーターは後続。
 
-確認手順: アプリを再起動 → MIDI connectionsでEnable → MIDI設定で`Tetorica YM2612 A`を選択 → KeyboardまたはRunで発音。Bも同様。詳細は[Native synth](native_synth.md)。
+確認手順: アプリを再起動 → MIDI connectionsでEnable → MIDI設定で`Tetorica YM2612`を選択 → KeyboardまたはRunで発音。Sega PSGも同様（CH10はノイズ）。詳細は[Native synth](native_synth.md)。
 
 ### GarageBandへPCMを渡す拡張（後続）
 
 - [ ] BlackHole等の仮想Core Audioデバイスを出力先にし、GarageBandのオーディオトラックで受ける手順を検証する。ドライバーの同梱やインストールは今回行わない。
-- [ ] A/BをGarageBand側で別々にMIXする場合は、合成前の音を別の音声チャンネルへ出す。現段階は内蔵Mixerによるステレオ合成のみ。
+- [ ] FM/PSGをGarageBand側で別々にMIXする場合は、合成前の音を別の音声チャンネルへ出す。現段階は内蔵Mixerによるステレオ合成のみ。
 
 MIDIポート名とDAWのトラック名は別。examplesの共通接続先は内蔵音源を使う。GarageBandのトラック別MIDI CH振り分けを前提にしない。
 
@@ -40,9 +40,9 @@ MIDIポート名とDAWのトラック名は別。examplesの共通接続先は�
 出力ポートとチャンネルをまとめた演奏先をJavaScriptから作成する。以下は希望するAPIの例であり、まだ実行できない。
 
 ```js
-const piano = midi.output("Tetorica YM2612 A", { channel: 1 });
-const bass  = midi.output("Tetorica YM2612 A", { channel: 2 });
-const synth = midi.output("Tetorica YM2612 B", { channel: 1 });
+const piano = midi.output("Tetorica YM2612", { channel: 1 });
+const bass  = midi.output("Tetorica YM2612", { channel: 2 });
+const synth = midi.output("Tetorica Sega PSG", { channel: 1 });
 
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.8 });

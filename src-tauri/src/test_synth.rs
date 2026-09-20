@@ -214,7 +214,7 @@ fn start(
         format => return Err(format!("Unsupported output sample format: {format:?}")),
     }?;
     let mut inputs = Vec::new();
-    for (port, name) in ["Tetorica YM2612 A", "Tetorica YM2612 B"]
+    for (port, name) in ["Tetorica YM2612", "Tetorica Sega PSG"]
         .iter()
         .enumerate()
     {
