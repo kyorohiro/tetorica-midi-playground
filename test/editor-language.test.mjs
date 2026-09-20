@@ -55,3 +55,10 @@ test('relative imports preserve JSDoc typedef, parameters and return types',asyn
  assert.ok(result.entries.some(e=>e.name==='output'));
  assert.ok(result.entries.some(e=>e.name==='velocity'));
 });
+test('bundled library exposes JSDoc options through dynamic relative imports',async()=>{
+ const module=await readFile(new URL('../ui/lib/phrase.js',import.meta.url),'utf8');
+ const code='const {playPhrase}=await import("./lib/phrase.js"); liveLoop("a",async context=>{await playPhrase(context,midi.output("tetorica-ym2612"),["C4"],{';
+ const worker=language(code,{'file:///lib/phrase.js':module});
+ const result=await worker.getCompletionsAtPosition('file:///index.js',code.length);
+ for(const name of ['duration','velocity'])assert.ok(result.entries.some(e=>e.name===name),name);
+});

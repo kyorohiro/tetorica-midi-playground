@@ -267,3 +267,7 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 | `08_output_slots.js` | MIDI connectionsで01をYM2612、02をPSGへ割り当ててから実行。 |
 
 最後の2例には接続設定が必要です。ポート名とトラック名は別で、CHによる楽器の振り分けは受信側に依存します。内蔵YM2612の6音は全MIDI CHで共有します。PSGは矩形波3音とCH10のノイズ1音で、例では矩形波のG4を使います。
+
+## ライブラリの再利用
+
+FILESの`lib/README_jp.md`に手順を記載しています。`examples/09_library.js`はDAWなしで試せます。`lib/phrase.js`の`playPhrase(context, output, notes, options)`にはJSDoc補完用の型を記載しています。例は`await import("../lib/phrase.js")`で読み込み、liveLoopのcontextを明示的に渡すことで停止に追従します。import先はRun fileのローカルなヘルパーを参照できません。ライブラリコードは編集可能で、保存済みの編集は保持します。

@@ -269,3 +269,7 @@ Open an example, select its path in **Run file**, then press **Run**. Use **Stop
 | `08_output_slots.js` | Requires assigning slots 01 and 02 in MIDI connections first. |
 
 The last two examples deliberately demonstrate external setup. Port names are not track names; separate instruments on separate channels depend on the receiver. The built-in YM2612 shares six voices across all MIDI channels. PSG has three tone voices and a noise voice on CH10; its example uses G4 on a tone channel.
+
+## Reusable libraries
+
+Open `lib/README.md` in FILES for the module guide, or run `examples/09_library.js` to try it without a DAW. `lib/phrase.js` exports `playPhrase(context, output, notes, options)` with JSDoc completion. The example uses `await import("../lib/phrase.js")` and passes its liveLoop context explicitly so cancellation follows the loop. Imported modules do not inherit the Run file's local helpers. Library code is editable and saved edits are preserved.

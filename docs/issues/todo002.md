@@ -1,6 +1,6 @@
 # MIDI Playground TODO 002
 
-リリース後に順番に進める改善。00のNative YM2612 + Sega PSG試作を実装中。01の複数音源・複数CH送信を実装中。02の補完を実装済み（実画面確認は残る）。03のexamples整備を実装済み。04は未完了。
+リリース後に順番に進める改善。00のNative YM2612 + Sega PSG試作を実装中。01の複数音源・複数CH送信を実装中。02の補完を実装済み（実画面確認は残る）。03のexamples整備を実装済み。04のライブラリガイドも実装済み。実機確認と00・01の残課題は継続。
 既存機能の残課題は [todo.md](todo.md) を参照。
 
 ## 進め方
@@ -155,11 +155,13 @@ const lead = midi.output(MIDI_OUTPUT_02, { channel: 1 });
 
 ## 04. lib/README.mdとライブラリ利用ガイド
 
-- [ ] FM2612 Playgroundの`lib/README.md`とFILES内のライブラリ構成を確認する。
-- [ ] MIDI版のFILESにも`lib/README.md`を用意し、ライブラリの役割・相対import・公開関数・利用例を記載する。
-- [ ] FM固有機能はそのまま案内せず、MIDI版で使える機能と制約を説明する。
-- [ ] examplesからライブラリを使う例と、JSDocで補完を補う例を結びつける。
-- [ ] READMEの閲覧、非実行扱い、相対import、保存済みファイルの保護を検証する。必要に応じて日本語版も用意する。
+- [x] FM2612 Playgroundの`lib/README.md`とFILES内のライブラリ構成を確認する。
+- [x] MIDI版のFILESにも`lib/README.md`を用意し、ライブラリの役割・相対import・公開関数・利用例を記載する。
+- [x] FM固有機能はそのまま案内せず、MIDI版で使える機能と制約を説明する。
+- [x] examplesからライブラリを使う例と、JSDocで補完を補う例を結びつける。
+- [x] READMEの閲覧、非実行扱い、相対import、保存済みファイルの保護を検証する。必要に応じて日本語版も用意する。
+
+実装メモ: FILESに読取専用の`lib/README.md`・`lib/README_jp.md`、編集可能な`lib/phrase.js`と`examples/09_library.js`を同梱。相対import、contextの受け渡し、MIDI版の制約を記載。保存済みのJSは上書きしない。実際のmodule resolverによる例の実行、停止例外の伝播、Monacoの動的import経由の補完を自動テスト。Native画面での閲覧・試聴は未確認。
 
 ## 最終確認
 
