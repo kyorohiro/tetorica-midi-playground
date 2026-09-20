@@ -1,6 +1,6 @@
 # MIDI Playground TODO 002
 
-リリース後に順番に進める改善。00のNative YM2612試作を実装中。01以降は未着手。
+リリース後に順番に進める改善。00のNative YM2612 + Sega PSG試作を実装中。01以降は未着手。
 既存機能の残課題は [todo.md](todo.md) を参照。
 
 ## 進め方
@@ -40,9 +40,12 @@ MIDIポート名とDAWのトラック名は別。examplesの共通接続先は�
 出力ポートとチャンネルをまとめた演奏先をJavaScriptから作成する。以下は希望するAPIの例であり、まだ実行できない。
 
 ```js
-const piano = midi.output("Tetorica YM2612", { channel: 1 });
-const bass  = midi.output("Tetorica YM2612", { channel: 2 });
-const synth = midi.output("Tetorica Sega PSG", { channel: 1 });
+await enableSoundChip("ym2612");
+await enableSoundChip("sega-psg");
+
+const piano = midi.output("tetorica-ym2612", { channel: 1 });
+const bass  = midi.output("tetorica-sega-psg", { channel: 2 });
+const synth = midi.output("tetorica-ym2612", { channel: 3 });
 
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.8 });
@@ -50,7 +53,7 @@ liveLoop("piano", async () => {
 });
 
 liveLoop("bass", async () => {
-  bass.play("C2", { duration: 0.4 });
+  bass.play("C3", { duration: 0.4 });
   await beat(0.5);
 });
 
@@ -59,6 +62,38 @@ liveLoop("fm", async () => {
   await beat(0.25);
 });
 ```
+
+### 内蔵音源の準備と固定ID（合意した方針・未実装）
+
+examplesは手動のEnableやDAWの準備を前提にせず、コード内で音源を有効化してから演奏先を作る。
+
+- [ ] `await enableSoundChip("ym2612")` / `await enableSoundChip("sega-psg")`を追加。音源と接続先が利用可能になるまで待機し、初期化失敗は呼び出し元へ理由を返す。未知のIDはエラーにする。
+- [ ] 有効化済みの音源への再呼び出しは再初期化しない。並行呼び出しでも二重生成せず、既存の発音や設定をリセットしない。
+- [ ] `tetorica-ym2612` / `tetorica-sega-psg`を内蔵音源の固定IDとして解決する。表示名やOSのポート列挙順に依存させず、同名の外部ポートへ誤接続しない。
+- [ ] 現在は2音源をまとめて有効化するRackなので、音源単位の有効状態と共有オーディオ出力の寿命を整理する。コードとMIDI connectionsのEnable表示を同期する。
+- [ ] Stopは発音と処理中の演奏要求を停止するが、有効化した音源はKeyboard用に残す。初期化待機中のStop・再Runで古い処理が演奏を再開しないようにする。音源の明示的な無効化・アプリ終了時には資源を解放する。
+- [ ] 初期化成功・失敗・重複呼び出し・Stopとの競合・固定ID解決を自動テストする。
+
+### 名前指定とMIDIタブの論理出力（未実装）
+
+外部音源向けには名前の直接指定と、MIDIタブで接続先を割り当てる方法も用意する。チャンネルはコード側で指定する。
+
+```js
+const external = midi.output("GarageBand", { channel: 1 });
+const piano = midi.output(MIDI_OUTPUT_01, { channel: 1 });
+const bass = midi.output(MIDI_OUTPUT_01, { channel: 2 });
+const lead = midi.output(MIDI_OUTPUT_02, { channel: 1 });
+```
+
+- [ ] MIDIタブに`MIDI_OUTPUT_01`などの接続先割り当てを用意し、設定を保存する。スロット数と未指定時のチャンネル既定値は実装時に定義する。
+- [ ] 固定ID・外部ポート名・論理出力を同じ演奏先interfaceへ解決する。論理出力は名前文字列と混同しない識別子にする。
+- [ ] 未設定・接続先消失・同名候補の重複を明確なエラーにする。列挙順による別ポートへの自動接続を避ける。
+- [ ] Run時に使用する割り当てを検証し、未設定なら「MIDI_OUTPUT_02の接続先を設定してください」のように案内する。演奏中の割り当て変更時の停止・再接続契約を定義する。
+- [ ] 保存・復元・未設定・ポート消失と、同じ接続先を複数スロットで使う場合をテストする。
+
+実装順: 出力管理の調査 → 内蔵音源有効化と固定ID → 複数出力のノート所有権 → 論理出力設定 → 補完・examples。
+
+### 共通の出力・ノート管理
 
 - [ ] 現在のWorker / UI / nativeの出力接続・ノート管理を調査し、複数出力への拡張方針を決める。
 - [ ] `midi.output(name, { channel })`の契約を定義する。チャンネルは1〜16、出力一覧の取得、名前の不一致・重複、接続タイミング、非同期エラーの伝え方を整理する。
@@ -75,6 +110,7 @@ liveLoop("fm", async () => {
 
 - [ ] 実際に公開している`context`と関連ヘルパーのAPIを調査し、実装と型定義を一致させる。存在しないメンバーを補完に出さない。
 - [ ] `context.`のメンバー、引数、戻り値、説明が補完・ホバーで表示されるようにする。
+- [ ] `enableSoundChip()`の音源ID、内蔵出力の固定ID、`MIDI_OUTPUT_01`等の識別子を補完・ホバーに追加する。
 - [ ] `midi.output()`の引数と戻り値を型定義し、`const piano = midi.output(...)`から`piano.play()`とオプションの補完をつなげる。
 - [ ] ユーザーのJSDoc（`@param`、`@returns`、`@typedef`）による引数・オブジェクトの補完を確認する。公開する演奏先の型名・参照方法も決める。
 - [ ] FILES内の相対import先の型・JSDocがどこまで解決されるか確認し、対応範囲と制約を明記する。
@@ -85,14 +121,15 @@ liveLoop("fm", async () => {
 
 初心者が開いてRun fileに指定し、そのまま試せるコードを用意する。以下のファイル名は案。
 
-共通の接続先は00の確認用音源とする。最初の例は画面でその出力を選べば動き、複数CH・複数出力の例では確認用音源のポート名とCHを明示する。利用可能なポート一覧の確認方法も案内し、利用者のDAWトラック名を仮定しない。
+共通の接続先は00の内蔵音源とする。各演奏例は必要な音源を`await enableSoundChip(...)`で準備し、固定IDで`midi.output(...)`を作る。初回からRunだけで発音でき、手動Enableや出力選択を不要にする。外部ポートの名前指定・論理出力の割り当ては別の例として案内し、利用者のDAWトラック名を仮定しない。PSGの低音域制限とCH10のノイズ割り当てを踏まえて音域・CHを選ぶ。
 
-- [ ] `examples/01_first_note.js`: 選択中のMIDI outputで1音を鳴らす。
+- [ ] `examples/01_first_note.js`: 内蔵YM2612を有効化し、固定IDで1音を鳴らす。
 - [ ] `examples/02_live_loop.js`: メロディの繰り返し、拍、音の長さ。
 - [ ] `examples/03_multi_channel.js`: 同じ出力のCH1 / CH2へ送る。
-- [ ] `examples/04_multi_output.js`: 複数の出力へ同時に送る。
+- [ ] `examples/04_multi_output.js`: YM2612とSega PSGをコードで有効化し、両方へ同時に送る。
 - [ ] `examples/05_context.js`: 実装に即した`context`の使い方。
 - [ ] `examples/06_jsdoc.js`: 自作関数や設定のJSDoc補完。
+- [ ] 外部ポート名指定と`MIDI_OUTPUT_01`等の割り当てを使う追加例を用意する。内蔵音源のみの例とは準備手順を分ける。
 - [ ] 各例の冒頭に準備・期待する動作・変更して遊べる箇所を短く記載する。出力名の変更、受信側設定が必要な例では明記する。
 - [ ] FILESへの同梱・更新方法を整える。既存ユーザーの保存済みコードを上書きしない。
 - [ ] 英語を基本とし、日本語ガイドにもexamplesの入口と実行手順を記載する。
