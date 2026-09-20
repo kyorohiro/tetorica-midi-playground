@@ -193,3 +193,34 @@ test('external play sends beat duration and waits for Clock pulses',async()=>{
   }catch(e){fail(e);}});
  });}finally{await w.terminate();}
 });
+test('Apply preserves other loops and cancels the replaced callback after its await',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Apply continuity timeout')),3000);
+  let ready=false,applied=false,backgroundCount=0,backgroundOwner,oldOwner,released=false,newSeen=false;
+  const fail=e=>{clearTimeout(timer);reject(e);};w.on('error',fail);
+  const apply=()=>{if(ready&&backgroundCount>=2&&!applied){applied=true;w.postMessage({type:'update',code:`liveLoop('lead',async()=>{await play(67,{duration:.01});});`});}};
+  w.on('message',m=>{try{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code:`
+    liveLoop('lead',async()=>{await play(60,{duration:1});await play(61,{duration:.01});});
+    liveLoop('background',async()=>{await play(cycle([72,74,76]),{duration:.01});});
+   `});
+   if(m.type==='error')throw new Error(m.text);
+   if(m.type==='looping'){ready=true;apply();}
+   if(m.type==='release'&&m.owner===oldOwner)released=true;
+   if(m.type==='note'){
+    w.postMessage({type:'reply',id:m.id});
+    const {note,owner}=m.payload;
+    if(note===60){assert.ok(!released);oldOwner=owner;}
+    else if(note===61)assert.fail('replaced callback resumed after await');
+    else if(note===67){assert.ok(released);assert.notEqual(owner,oldOwner);newSeen=true;}
+    else {
+     assert.equal(note,[72,74,76][backgroundCount%3]);
+     if(backgroundOwner===undefined)backgroundOwner=owner;else assert.equal(owner,backgroundOwner);
+     backgroundCount++;apply();
+     if(newSeen&&backgroundCount>=105){clearTimeout(timer);resolve();}
+    }
+   }
+  }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+});

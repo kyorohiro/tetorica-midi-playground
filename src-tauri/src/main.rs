@@ -456,6 +456,39 @@ mod tests {
         }
     }
     #[test]
+    fn held_note_follows_tempo_changes_without_wall_clock_sleep() {
+        // Four beats: 2 beats at 120 BPM, then 2 at 60 BPM = 3 seconds.
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let origin=Instant::now();
+        let mut s=Session {output:Some(Box::new(Fake(messages.clone()))),external_clock:true,external_started:true,..Default::default()};
+        s.clock.receive(0,0xfa);s.last_clock=Some(origin);
+        s.external_note(0,None,60,1,90,4.0).unwrap();
+        let mut micros=0u64;
+        for pulse in 1..=96 {
+            micros+=if pulse<=48 {20_833} else {41_667};
+            let now=origin+Duration::from_micros(micros);
+            s.clock.receive(micros,0xf8);s.last_clock=Some(now);s.expire(now).unwrap();
+            assert_eq!(s.notes.is_empty(),pulse==96,"pulse {pulse}");
+        }
+        assert_eq!(micros,3_000_000);
+        assert_eq!(*messages.lock().unwrap(),vec![vec![0x90,60,90],vec![0x80,60,0]]);
+    }
+    #[test]
+    fn held_external_notes_stop_on_dropout_and_do_not_kill_retriggered_owners() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let origin=Instant::now();
+        let mut s=Session {output:Some(Box::new(Fake(messages.clone()))),external_clock:true,external_started:true,..Default::default()};
+        s.clock.running=true;s.last_clock=Some(origin);
+        s.external_note(0,Some(1),60,1,90,4.0).unwrap();
+        s.external_note(0,Some(2),60,1,90,8.0).unwrap();
+        s.release_owner(0,1).unwrap();assert_eq!(s.note_ticks.get(&(0,60)),Some(&192));
+        s.expire(origin+Duration::from_millis(999)).unwrap();assert_eq!(s.notes.len(),1);
+        s.expire(origin+Duration::from_millis(1000)).unwrap();assert!(s.notes.is_empty());assert!(s.note_ticks.is_empty());
+        let count=messages.lock().unwrap().len();
+        s.expire(origin+Duration::from_secs(10)).unwrap();assert_eq!(messages.lock().unwrap().len(),count);
+        assert!(s.external_note(0,None,64,1,90,1.0).is_err());
+    }
+    #[test]
     fn external_note_ends_on_pulses_not_elapsed_wall_time() {
         let messages=Arc::new(Mutex::new(Vec::new()));
         let mut s=Session {output:Some(Box::new(Fake(messages.clone()))),external_clock:true,external_started:true,..Default::default()};
