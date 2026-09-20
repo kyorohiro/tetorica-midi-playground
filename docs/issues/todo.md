@@ -55,7 +55,8 @@ FM2612 Playgroundとの機能差を整理する。MIDI版は基本的な演奏�
 ## 別工程: 外部MIDI Clockとの同期
 
 - [ ] Clock監視・テストから、スクリプト演奏の同期へ拡張する。
-- [ ] Start / Continue / Stop、Clock途絶、BPM変更、再接続時の動作を定義する。
+- [x] Start / Continue / Stop・Clock途絶・切断の拍位置管理を定義し、環境非依存の状態管理とテストを追加。詳細は[external_clock.md](external_clock.md)。
+- [ ] nativeイベントをWorkerへ接続し、停止・途絶時のNote Offと待機処理、再接続を統合検証する。現時点の演奏は内部BPMのまま。
 - [ ] `nextBeat()`による内部拍同期と、外部Clock同期を区別して説明・検証する。
 
 ## MIDI版への導入方針を別途検討するもの
@@ -72,7 +73,7 @@ FM音色、PSG、DAC、サンプル、エフェクトは現在未搭載。
 
 ## 検証記録
 
-- 直近のJSテスト: 34件成功（Monacoモデルの切り替え・read-only・補完の検証を追加）。
+- 直近のJSテスト: 37件成功（外部Clockの状態管理3件を追加）。
 - 英日ガイド更新後の生成内容一致テスト: 成功。
 - 今回のループ・音楽ヘルパー追加後のGarageBand実機確認: 未実施。
 - `chord`は音名配列を生成するだけで、自動で同時発音はしない。
