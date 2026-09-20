@@ -1,3 +1,4 @@
+import {connectionStatus} from './connection.js';
 import {leadExample} from './examples.js';
 import {ensureEntry,runSource} from './project.js';
 import {withGuide,canRun,isGuide} from './guide.js';
@@ -31,6 +32,8 @@ $('fileInput').onchange=()=>run(async()=>{const file=$('fileInput').files[0];if(
 $('saveFile').onclick=()=>{const url=URL.createObjectURL(new Blob([files[selected]],{type:canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 $('expandButton').onclick=()=>{const expanded=document.body.classList.toggle('expanded');$('expandButton').setAttribute('aria-pressed',String(expanded));$('expandButton').textContent=expanded?'Collapse':'Expand';};
 $('midiSettings').onclick=()=>ui.setBottomTab('operator');
+$('midiConnection').onclick=()=>ui.setBottomTab('operator');
+function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;}
 $('clearConsole').onclick=()=>ui.clearConsole();
 async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLine(String(e));}}
 let worker=null,epoch=0;
@@ -61,13 +64,32 @@ async function start(){
 }
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}});
-async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;$(direction).replaceChildren(...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
+async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 $('refresh').onclick=()=>run(refresh);
-for(const direction of ['Input','Output'])$('connect'+direction).onclick=()=>run(async()=>{await stop();await invoke('connect_'+direction.toLowerCase(),{id:$(direction.toLowerCase()).value});ui.setStatus(`${direction} connected`);});
+let outputConnecting=false;
+async function connectPort(direction){
+  const select=$(direction.toLowerCase()), id=select.value;
+  if(!id){ui.setStatus('Choose a MIDI port first.');return;}
+  if(direction==='Output'&&outputConnecting)return;
+  if(direction==='Output')outputConnecting=true;
+  select.disabled=true;$('connect'+direction).disabled=true;
+  try{
+    ui.setStatus(`Connecting ${direction.toLowerCase()}…`);
+    await stop();
+    await invoke('connect_'+direction.toLowerCase(),{id});
+    showConnection(await invoke('snapshot'));
+    ui.setStatus(`${direction} connected`);
+  }finally{
+    select.disabled=false;$('connect'+direction).disabled=false;
+    if(direction==='Output')outputConnecting=false;
+  }
+}
+for(const direction of ['Input','Output'])$('connect'+direction).onclick=()=>run(()=>connectPort(direction));
+$('output').onchange=()=>run(()=>connectPort('Output'));
 $('note').onclick=()=>run(async()=>{await stop();await invoke('play_note');});
 $('panic').onclick=()=>run(stop);
 $('disconnect').onclick=()=>run(async()=>{await stop();await invoke('disconnect');ui.setStatus('Disconnected');});
 $('follow').onchange=()=>run(async()=>{const enabled=$('follow').checked;await stop();await invoke('set_follow',{enabled});$('follow').checked=enabled;});
 let polling=false;
-setInterval(async()=>{if(polling)return;polling=true;try{$('clock').textContent=JSON.stringify(await invoke('snapshot'),null,2);}catch(e){ui.setStatus(String(e));}finally{polling=false;}},100);
+setInterval(async()=>{if(polling)return;polling=true;try{const snapshot=await invoke('snapshot');$('clock').textContent=JSON.stringify(snapshot,null,2);showConnection(snapshot);}catch(e){showConnection(null);ui.setStatus(String(e));}finally{polling=false;}},100);
 run(refresh);

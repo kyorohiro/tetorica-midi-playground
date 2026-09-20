@@ -1,11 +1,31 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Tetorica MIDI Playground</title><link rel="stylesheet" href="style.css"></head><body>
 <header class="app-bar"><div><h1>Tetorica MIDI Playground</h1><p>Live-code JavaScript · MIDI instruments</p></div><button id="midiSettings">MIDI settings</button></header>
 <main><section class="panel">
-<div class="toolbar"><button id="runButton">Run</button><button id="stopButton">Stop</button><label>Run file <select id="runFile"></select></label><label>BPM <input id="bpm" type="number" min="1" max="999" value="120"></label><span>Internal clock</span><button id="saveFile">Export file</button><button id="expandButton" aria-pressed="false">Expand</button></div>
+<div class="toolbar"><button id="midiConnection" data-state="unknown" title="Open MIDI settings">MIDI: Checking…</button><button id="runButton">Run</button><button id="stopButton">Stop</button><label>Run file <select id="runFile"></select></label><label>BPM <input id="bpm" type="number" min="1" max="999" value="120"></label><span>Internal clock</span><button id="saveFile">Export file</button><button id="expandButton" aria-pressed="false">Expand</button></div>
 <nav class="tabbar" role="tablist" aria-label="Playground panels"><button id="codeTab" role="tab" aria-controls="codePanel">Code</button><button id="consoleTab" role="tab" aria-controls="consolePanel">Console</button><button id="operatorTabButton" role="tab" aria-controls="operatorPanel">MIDI</button><button id="helpersTab" role="tab" aria-controls="helpersPanel">Helper</button></nav>
 <section id="codePanel" class="tab-panel" role="tabpanel" aria-labelledby="codeTab"><div class="section-heading"><h2 id="fileTitle">Code</h2><span>⌘/Ctrl + Enter: Run · Shift + Escape: Stop</span></div><div class="code-workspace"><aside class="file-explorer"><div class="file-explorer-header">FILES <button id="newFile" aria-label="New JavaScript file">+</button><button id="importFile">Import</button></div><div id="fileExplorerList"></div><input id="fileInput" type="file" accept=".js,.mjs,text/javascript" hidden></aside><textarea id="editor" spellcheck="false" aria-label="JavaScript editor"></textarea></div></section>
 <section id="consolePanel" class="tab-panel" role="tabpanel" aria-labelledby="consoleTab" hidden><button id="clearConsole">Clear console</button><pre id="consoleOutput" aria-live="polite"></pre></section>
-<section id="operatorPanel" class="tab-panel" role="tabpanel" aria-labelledby="operatorTabButton" hidden><h2>MIDI connections</h2><button id="refresh">Refresh ports</button><label>Clock input <select id="input"></select></label><button id="connectInput">Connect input</button><label>Note output <select id="output"></select></label><button id="connectOutput">Connect output</button><p><button id="note">Play C4 (250 ms)</button> <button id="panic">Stop notes</button> <button id="disconnect">Disconnect</button></p><label><input id="follow" type="checkbox"> Test C4 on each received quarter-note boundary</label><p>The Clock test is separate from code execution. Code currently uses internal BPM.</p><pre id="clock">Disconnected</pre></section>
+<section id="operatorPanel" class="tab-panel" role="tabpanel" aria-labelledby="operatorTabButton" hidden>
+<div class="section-heading"><h2>MIDI connections</h2><button id="refresh">Refresh ports</button></div>
+<div class="connection-card">
+<h2>Send notes to your instrument</h2>
+<p>Select a destination to connect automatically.</p>
+<label for="output">1. Choose MIDI output — connects automatically</label>
+<div class="connection-row"><select id="output"></select><button id="connectOutput" class="connect-primary">Reconnect output</button></div>
+<p id="outputStatus" role="status">Checking connection…</p>
+<p>In GarageBand, select a software instrument track.</p>
+<div class="connection-row"><button id="note">2. Test sound — Play C4</button><button id="panic">Stop notes</button><button id="disconnect">Disconnect MIDI</button></div>
+<p>Once you hear the test note, press Run to play your script.</p>
+</div>
+<details class="connection-card"><summary>Clock input — optional</summary>
+<p>You do not need a Clock input to play scripts. Scripts currently use internal BPM.</p>
+<label for="input">Choose MIDI Clock input</label>
+<div class="connection-row"><select id="input"></select><button id="connectInput">Connect input</button></div>
+<label><input id="follow" type="checkbox"> Test C4 on each received quarter-note boundary</label>
+<p>The Clock test is separate from code execution.</p>
+<pre id="clock">Disconnected</pre>
+</details>
+</section>
 <section id="helpersPanel" class="tab-panel" role="tabpanel" aria-labelledby="helpersTab" hidden><h2>Quick start</h2><p>Connect an output in MIDI settings. In GarageBand, select a software instrument track. Choose a script in Run file and press Run. The default is /index.js, even while viewing README.md.</p><pre>setBpm(120);
 await play("C4", { duration: 0.5 });
 await play("E4", { duration: 0.5 });

@@ -20,6 +20,7 @@ impl NoteOutput for MidiOutputConnection {
 struct Session {
     clock: clock::Clock,
     output: Option<Box<dyn NoteOutput>>,
+    output_name: Option<String>,
     off: Option<Instant>,
     follow: bool,
     last_clock: Option<Instant>,
@@ -184,6 +185,7 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
     let port = output
         .find_port_by_id(&id)
         .ok_or("Output disappeared; refresh ports")?;
+    let name = output.port_name(&port).map_err(|e| e.to_string())?;
     let next = output
         .connect(&port, "Tetorica Notes")
         .map_err(|e| e.to_string())?;
@@ -192,6 +194,7 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
     s.follow = false;
     s.stop()?;
     s.output = Some(Box::new(next));
+    s.output_name = Some(name);
     Ok(())
 }
 #[tauri::command]
@@ -225,6 +228,7 @@ fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
     s.run_id += 1;
     let result = s.stop();
     s.output = None;
+    s.output_name = None;
     s.clock = Default::default();
     s.last_clock = None;
     result
@@ -259,6 +263,7 @@ fn play_midi_note(
 struct Snapshot {
     clock: clock::Clock,
     output_connected: bool,
+    output_name: Option<String>,
     follow: bool,
     clock_present: bool,
     error: Option<String>,
@@ -269,6 +274,7 @@ fn snapshot(state: tauri::State<AppState>) -> Snapshot {
     Snapshot {
         clock: s.clock.clone(),
         output_connected: s.output.is_some(),
+        output_name: s.output_name.clone(),
         follow: s.follow,
         clock_present: s
             .last_clock
