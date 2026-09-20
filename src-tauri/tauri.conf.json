@@ -24,7 +24,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "app"
+      "app",
+      "dmg"
     ],
     "category": "Music",
     "shortDescription": "JavaScript MIDI Playground for macOS",
