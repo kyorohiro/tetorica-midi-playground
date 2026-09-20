@@ -1,0 +1,1 @@
+export const leadExample = "liveLoop(\"lead\", async () => {\n  const notes = scale(\"E4\", \"minorPentatonic\", 2);\n  //await nextBeat();\n  await play(choose(notes), {\n    duration: 0.08,\n  });\n  await beat(cycle([0.04, 0.04, 0.08]));\n});\n";

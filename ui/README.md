@@ -50,8 +50,8 @@ on channel 1. You do not need to connect Clock input for this test.
 
 ## 4. Play with JavaScript
 
-Return to “Code”, select “melody.js” in FILES, and click “Run”.
-It plays C, E, G, C. “loop.js” repeats until you click “Stop”.
+Select “/index.js” in “Run file” and click “Run”, even with this guide open.
+The default lead repeats until Stop. melody.js plays C, E, G, C. “loop.js” repeats until you click “Stop”.
 
     setBpm(120);
     await play("C4", { duration: 0.5 });
@@ -93,3 +93,10 @@ execution are not included yet.
 Only run JavaScript whose contents you have reviewed and trust.
 
 When finished, click Stop, then Disconnect in MIDI settings.
+
+
+## Run file
+
+Run executes the script selected in **Run file**, independently of the file open in the editor. The default is `/index.js`, a single-channel E minor pentatonic lead loop. You can read this guide while running it. To run `melody.js` or `loop.js`, select it in **Run file** first. Existing saved scripts are preserved.
+
+`scale(root, name, octaves)` supports major, minor, majorPentatonic and minorPentatonic. `cycle(values)` cycles through values; counters are shared within a Run. Use `cycle("lead", values)` to give a pattern its own counter. Run resets counters. `nextBeat()` is not supported yet; keep that example line commented out. Select `/lead.js` to try the new default in an existing project.

@@ -50,8 +50,8 @@ TetoricaはMIDI（演奏指示）を送り、GarageBandが音を鳴らします�
 
 ## 4. JavaScriptで演奏する
 
-「Code」へ戻り、FILESの「melody.js」を選んで「Run」を押します。
-C・E・G・Cの順に鳴ります。「loop.js」は「Stop」まで繰り返します。
+「Run file」で「/index.js」を選んで「Run」を押します。この説明を開いたままでも実行できます。
+既定のleadはStopまで繰り返します。melody.jsはC・E・G・Cの順に鳴ります。「loop.js」は「Stop」まで繰り返します。
 
     setBpm(120);
     await play("C4", { duration: 0.5 });
@@ -67,7 +67,7 @@ C・E・G・Cの順に鳴ります。「loop.js」は「Stop」まで繰り返�
 - Stop: 実行と発音を停止。
 - Cmd+Enter: Run / Shift+Escape: Stop。
 
-このREADMEは説明用で、Runできません。
+このREADME自体は実行されません。Runは「Run file」で選んだコードを実行します。
 
 ## 保存
 
@@ -92,3 +92,10 @@ FM音源、音声出力、エフェクト、Monaco、外部Clockでのコード�
 読み込むJavaScriptは自分で内容を確認したものを使ってください。
 
 終了時はStop、MIDI settingsのDisconnectを押してください。
+
+
+## Run file
+
+Runは、エディターで開いているファイルとは別に、**Run file**で選んだスクリプトを実行します。既定は単一チャンネルのEマイナーペンタトニックのleadループ `/index.js` です。この説明を開いたままでも実行できます。`melody.js`や`loop.js`を実行する場合は、先に **Run file** で選んでください。保存済みのコードは保持されます。
+
+`scale(root, name, octaves)` は major / minor / majorPentatonic / minorPentatonic に対応。`cycle(values)` は順に値を返し、カウンターはRun内で共有します。`cycle("lead", values)` で別のカウンターを指定できます。Runでリセットします。`nextBeat()` は未対応なのでコメントのまま使ってください。既存プロジェクトでは `/lead.js` をRun fileで選ぶと新しい初期サンプルを試せます。

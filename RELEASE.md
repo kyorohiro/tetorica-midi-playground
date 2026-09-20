@@ -57,7 +57,7 @@ Page description draft:
 ## Download test
 
 1. Extract the ZIP and open the `.app`.
-2. Confirm README.md appears beside melody.js and loop.js; Run is disabled there.
+2. Confirm README.md opens initially and Run file defaults to /index.js. Run should execute /index.js while the guide remains open.
 3. Follow README.md to set up IAC and GarageBand.
 4. Connect Note output; run melody.js, then loop.js; verify Stop silences notes.
 5. Rerun and disconnect while playing; verify no hanging notes.

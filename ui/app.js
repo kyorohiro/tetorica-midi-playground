@@ -1,3 +1,5 @@
+import {leadExample} from './examples.js';
+import {ensureEntry,runSource} from './project.js';
 import {withGuide,canRun,isGuide} from './guide.js';
 import {createPlaygroundUi} from './shared/playground_ui.js';
 import {renderFileTree} from './shared/playground_file_tree.js';
@@ -8,10 +10,18 @@ ui.installBottomTabHandlers();ui.setBottomTab('code');
 const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
 let files={...defaults};
 try{const stored=JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
-files=withGuide(files);
+if(!Object.hasOwn(files,'/lead.js')) files['/lead.js']=leadExample;
+files=withGuide(ensureEntry(files, leadExample));
+let runPath="/index.js";
+function refreshRunFiles(){
+  $('runFile').replaceChildren(...Object.keys(files).filter(canRun).map(path=>{const option=document.createElement('option');option.value=path;option.textContent=path;return option;}));
+  $('runFile').value=runPath;
+}
+refreshRunFiles();
+$('runFile').onchange=()=>{runPath=$('runFile').value;};
 let selected="/README.md";const expanded=new Map();
 function persist(){try{localStorage.setItem('midi-files',JSON.stringify(files));}catch{ui.setStatus('Local save failed. Use Export JS to save your code.');}}
-function openFile(path){selected=path;$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);$('runButton').disabled=!canRun(path);renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});}
+function openFile(path){selected=path;$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});}
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;files[selected]=$('editor').value;persist();};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
@@ -26,12 +36,13 @@ async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLi
 let worker=null,epoch=0;
 async function stop(){++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
 async function start(){
-  if(!canRun(selected)){ui.setStatus('Select melody.js or loop.js in FILES, then Run.');return;}
+  const target=runPath;
+  const code=runSource(files,target);
   const ticket=epoch+1;await stop();if(ticket!==epoch)return;const bpm=Number($('bpm').value);
   if(!Number.isFinite(bpm)||bpm<=0||bpm>999)throw new Error('BPM must be >0 and ≤999');
   const runId=await invoke('begin_run');if(ticket!==epoch)return;
   const current=new Worker('./runner.js',{type:'module'});worker=current;
-  ui.setRuntimeState('Running');ui.setStatus(`Running ${selected}`);
+  ui.setRuntimeState('Running');ui.setStatus(`Running ${target}`);
   let inFlight=0,logs=0;
   current.onmessage=async({data})=>{
     if(current!==worker||ticket!==epoch)return;
@@ -46,7 +57,7 @@ async function start(){
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
-  current.postMessage({type:'run',code:files[selected],bpm});
+  current.postMessage({type:'run',code,bpm});
 }
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}});

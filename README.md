@@ -13,8 +13,8 @@ The tab controller and file tree are snapshots of the original Playground module
 under `ui/shared`; the original Browser application is unchanged. Monaco is not
 yet included; the editor currently uses a textarea.
 
-Connect an output in **MIDI settings**, return to **Code**, and press **Run** on
-`melody.js`. `loop.js` repeats notes until **Stop**. GarageBand needs no Clock
+Connect an output in **MIDI settings**, select `/index.js` in **Run file**, and press **Run**.
+The viewed file and Run file are independent. Select `/loop.js` in Run file to try a loop. `loop.js` repeats notes until **Stop**. GarageBand needs no Clock
 setup for this. Code uses **internal BPM**, not the external Clock input.
 
 ```js

@@ -20,5 +20,25 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120}) {
     await sleep(durationMs);
   }
   const choose=values=>{if(!Array.isArray(values)||!values.length)throw new Error('choose needs a nonempty array');return values[Math.floor(Math.random()*values.length)];};
-  return {play,beat,setBpm,choose,log};
+  const cycles=new Map();
+  function cycle(keyOrValues, maybeValues) {
+    const values=maybeValues === undefined ? keyOrValues : maybeValues;
+    if(!Array.isArray(values)||!values.length)throw new Error('cycle needs a nonempty array');
+    const key=maybeValues === undefined ? JSON.stringify(values) : String(keyOrValues);
+    const index=cycles.get(key)||0;
+    cycles.set(key,index+1);
+    return values[index%values.length];
+  }
+  function scale(root,name,octaves=1) {
+    const intervals={majorPentatonic:[0,2,4,7,9],minorPentatonic:[0,3,5,7,10],major:[0,2,4,5,7,9,11]}[name];
+    if(!Array.isArray(intervals))throw new Error(`Unknown scale: ${name}`);
+    if(!Number.isInteger(octaves)||octaves<1||octaves>11)throw new Error('Invalid octave count');
+    const base=noteNumber(root), notes=[];
+    for(let octave=0;octave<octaves;octave++)for(const interval of intervals){
+      const midi=noteNumber(base+octave*12+interval);
+      notes.push(['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi%12]+(Math.floor(midi/12)-1));
+    }
+    return notes;
+  }
+  return {play,beat,setBpm,choose,cycle,scale,log};
 }
