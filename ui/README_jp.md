@@ -143,3 +143,20 @@ onKeyboardPressKey("piano", async (event) => {
 onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
 ```
 Run後、エディター上の **Keyboard input** をクリックしてA/S/Dを押してください。この領域にフォーカスがあるときだけ送信するため、編集中の文字入力では発音しません。Tab/EscapeとCtrl/Alt/Command付き操作は対象外です。フォーカスを失うと送信済みの押下キーのreleaseを送ります。eventにはkey/code/type/repeatと修飾キー情報が入り、DOMメソッドはありません。キーリピートは無視し、非同期コールバックの実行中はそのハンドラーへの新規イベントをスキップします。同種の同名ハンドラーは置換、最大32個です。StopでWorkerと登録を破棄し、Runで新規開始します。発音はduration指定で、押している間だけ伸ばす仕様ではありません。
+
+## FILES内のモジュール
+
+```js
+// notes.js (add this file to FILES using Import)
+export const notes = ["E4", "G4", "B4"];
+```
+
+```js
+// index.js (Run file)
+const {notes} = await import("./notes.js");
+for (const note of notes) await play(note, {duration: 0.25});
+```
+
+Run fileでは文字列の相対パスで `await import()` を使います。読み込む `.js` / `.mjs` 内ではstatic import・再export・dynamic importが使えます。拡張子を含め、FILES内の `./` / `../` で指定してください。同一モジュールの評価はRunごとに一度だけで、編集は次回Runに反映されます。条件分岐内のimportも含め、参照先は実行前にすべて解決します。
+
+モジュール内でplayやbeatが必要な場合は関数の引数として渡してください。Run fileのヘルパーは自動的には引き継ぎません。循環import、変数で作るパス、npm・外部URL、import属性、import.metaは未対応です。参照の深さは64まで。Run file自体ではstatic import・exportは使えません。

@@ -33,7 +33,10 @@ notes. Native run IDs reject late requests from an earlier run. Files persist in
 app local storage; Export file provides a separate backup. Imports never auto-run.
 Scripts are trusted code running in a Worker, not a complete security sandbox.
 
-Audio, FM presets/effects, module imports, SPP/seek, predictive scheduling,
+FILES modules can be loaded with `await import("./notes.js")` from the Run file.
+Imported modules support static relative imports and exports; see the in-app guide.
+
+Audio, FM presets/effects, SPP/seek, predictive scheduling,
 external-Clock-driven scripts and Windows builds are not implemented yet.
 BPM display in the MIDI tab is an interval estimate, not a PLL.
 

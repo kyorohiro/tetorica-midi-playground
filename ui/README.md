@@ -145,3 +145,20 @@ onKeyboardPressKey("piano", async (event) => {
 onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
 ```
 Press Run, click **Keyboard input** above the editor, then press A/S/D. Only this focused area forwards keys; typing in the editor does not play notes. Tab/Escape and Ctrl/Alt/Command shortcuts are excluded. Losing focus sends releases for forwarded held keys. Events contain key/code/type/repeat and modifier flags, not DOM methods. Repeated keydown events are ignored. A handler skips new events while its async callback is busy. Names replace handlers of the same event type; at most 32 handlers. Stop terminates the Worker and registrations; Run starts fresh. These callbacks play duration-based notes, not hold-to-sustain notes.
+
+## FILES modules
+
+```js
+// notes.js (add this file to FILES using Import)
+export const notes = ["E4", "G4", "B4"];
+```
+
+```js
+// index.js (Run file)
+const {notes} = await import("./notes.js");
+for (const note of notes) await play(note, {duration: 0.25});
+```
+
+The Run file uses `await import()` with a literal relative path. Imported `.js`/`.mjs` modules can use static imports, re-exports and dynamic imports with `./` or `../` paths inside FILES. Include the extension. Each module is evaluated once per Run; edits take effect on the next Run. All referenced files are resolved before execution, including conditional imports.
+
+Pass music helpers as function arguments when a module needs them; modules do not inherit the Run file’s `play`, `beat`, etc. Circular imports, computed paths, npm/external URLs, import attributes and `import.meta` are not supported. Import nesting is limited to 64. Run files cannot use static imports or exports.

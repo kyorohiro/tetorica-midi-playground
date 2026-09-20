@@ -43,7 +43,8 @@ FM2612 Playgroundとの機能差を整理する。MIDI版は基本的な演奏�
 
 - [x] onKeyboardPressKey / onKeyboardReleaseKey。専用Keyboard input領域のフォーカス中のみ送信。編集入力・ショートカット・リピートを除外。同名置換、非同期処理中のイベントスキップ、最大32登録、Run / Stop時にWorkerごと破棄。フォーカス離脱で保持キーのrelease送信。
 - [ ] キーボード領域のフォーカス・ウィンドウ離脱をTauri実機で確認（Workerと登録管理は自動テスト済み）。
-- [ ] ファイル間のmodule import。仮想ファイルの解決とWorker内の実行方法を整える。
+- [x] FILES間の相対module import。Run fileはawait import、読み込んだJS/MJSはstatic import・再exportにも対応。Runごとにスナップショットとキャッシュを作成。循環・動的パス・外部URL等は明確なエラー。ヘルパーは関数引数で渡す。
+- [ ] Tauri実機でblob module読み込みとGarageBand発音を確認（CSP変更のため再ビルドが必要）。
 - [ ] Monacoの補完・エディター機能。現在はtextarea。
 - [x] 追加した拍同期・ループ専用ヘルパー・音楽ヘルパーをHelper画面と英語/日本語READMEに記載。
 - [x] 英日FILESガイドとルートREADMEの接続手順を更新。GarageBand仮想入力→自動接続を先に案内、IACとClock設定は任意へ。
@@ -69,7 +70,7 @@ FM音色、PSG、DAC、サンプル、エフェクトは現在未搭載。
 
 ## 検証記録
 
-- 直近のJSテスト: 28件成功（キーボード登録・Worker経由MIDI追加時）。
+- 直近のJSテスト: 31件成功（相対module import・再export・キャッシュ・不正指定の検証を追加）。
 - 英日ガイド更新後の生成内容一致テスト: 成功。
 - 今回のループ・音楽ヘルパー追加後のGarageBand実機確認: 未実施。
 - `chord`は音名配列を生成するだけで、自動で同時発音はしない。

@@ -82,7 +82,7 @@ async function start(){
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
-  current.postMessage({type:'run',code,bpm});
+  current.postMessage({type:'run',code,bpm,path:target,files:{...files}});
 }
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}});

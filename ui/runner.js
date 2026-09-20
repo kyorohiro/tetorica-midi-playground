@@ -1,3 +1,4 @@
+import {prepareModules} from './modules.js';
 import {createKeyboardHandlers} from './keyboard.js';
 import {createLoops} from './loops.js';
 import {createMidiHelpers} from './runtime.js';
@@ -44,8 +45,9 @@ onmessage=async ({data})=>{
   Object.assign(api,{stopLoop:loops.stopLoop,stopAllLoops:loops.stopAllLoops});
   const liveLoop=loops.liveLoop;
   try {
+    const modules=await prepareModules(data.files||{},data.code,data.path||'/index.js');
     const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
-    await new AsyncFunction(...Object.keys(api),'liveLoop','console',data.code)(...Object.values(api),liveLoop,{log,warn:log,error:log});
+    await new AsyncFunction(...Object.keys(api),'liveLoop','console',modules.code)(...Object.values(api),liveLoop,{log,warn:log,error:log});
     postMessage({type:loops.size?'looping':keyboard.size?'listening':'done'});
   } catch(e){postMessage({type:'error',text:String(e)});}
 };
