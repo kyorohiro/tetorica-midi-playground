@@ -177,8 +177,16 @@ fn ports() -> Result<Ports, String> {
             .collect(),
     })
 }
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClockEvent {
+    run_id: u64,
+    sequence: u64,
+    byte: u8,
+    timestamp_ms: f64,
+}
 #[tauri::command]
-fn connect_input(id: String, state: tauri::State<AppState>) -> Result<(), String> {
+fn connect_input(id: String, clock_events: tauri::ipc::Channel<ClockEvent>, state: tauri::State<AppState>) -> Result<(), String> {
     // Close callbacks before taking the session lock.
     let mut connection = state.input.lock().unwrap();
     connection.take();
@@ -194,6 +202,8 @@ fn connect_input(id: String, state: tauri::State<AppState>) -> Result<(), String
         .find_port_by_id(&id)
         .ok_or("Input disappeared; refresh ports")?;
     let shared = state.session.clone();
+    let origin = Instant::now();
+    let mut sequence = 0;
     *connection = Some(
         input
             .connect(
@@ -209,7 +219,14 @@ fn connect_input(id: String, state: tauri::State<AppState>) -> Result<(), String
                     if bytes[0] == 0xf8 {
                         s.last_clock = Some(Instant::now());
                     }
-                    // Output is handled by worker, never by this callback.
+                    // Send transport events directly, independently of the UI snapshot poll.
+                    if matches!(bytes[0], 0xf8 | 0xfa | 0xfb | 0xfc) {
+                        sequence += 1;
+                        let event = ClockEvent {run_id: s.run_id, sequence, byte: bytes[0], timestamp_ms: origin.elapsed().as_secs_f64()*1000.0};
+                        drop(s);
+                        let _ = clock_events.send(event);
+                    }
+                    // Note output stays on the native scheduler.
                 },
                 (),
             )

@@ -1,3 +1,4 @@
+import {createClockReceiver} from './clock-receiver.js';
 import {prepareModules} from './modules.js';
 import {createKeyboardHandlers} from './keyboard.js';
 import {createLoops} from './loops.js';
@@ -5,7 +6,7 @@ import {createMidiHelpers} from './runtime.js';
 import {installPlaygroundExecutionGuards} from './shared/playground_execution.js';
 installPlaygroundExecutionGuards(globalThis);
 let sequence=0;
-let keyboard=null;
+let keyboard=null,clockReceiver=null;
 const pending=new Map();
 const send=payload=>new Promise((resolve,reject)=>{
   if(pending.size>=64){reject(new Error('Too many concurrent MIDI requests'));return;}
@@ -13,12 +14,14 @@ const send=payload=>new Promise((resolve,reject)=>{
 });
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 onmessage=async ({data})=>{
+  if(data.type==='clock'){clockReceiver?.receive(data.event);return;}
   if(data.type==='keyboard'){await keyboard?.dispatch(data.event);return;}
   if(data.type==='reply'){
     const p=pending.get(data.id);pending.delete(data.id);
     if(p)data.error?p.reject(new Error(data.error)):p.resolve();return;
   }
   if(data.type!=='run')return;
+  clockReceiver=createClockReceiver(data.runId);
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});

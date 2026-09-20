@@ -39,7 +39,7 @@ $('midiConnection').onclick=()=>ui.setBottomTab('operator');
 function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;}
 $('clearConsole').onclick=()=>ui.clearConsole();
 async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLine(String(e));}}
-let worker=null,epoch=0;
+let worker=null,epoch=0,activeRunId=null,inputGeneration=0;
 const pressedKeys=new Map();
 const keyboardPad=$('keyboardInput');
 for(const type of ['keydown','keyup'])keyboardPad.addEventListener(type,event=>{
@@ -56,13 +56,14 @@ function releaseKeys(){
 }
 keyboardPad.addEventListener('blur',releaseKeys);
 window.addEventListener('blur',releaseKeys);
-async function stop(){pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
+async function stop(){activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
 async function start(){
   const target=runPath;
   const code=runSource(files,target);
   const ticket=epoch+1;await stop();if(ticket!==epoch)return;const bpm=Number($('bpm').value);
   if(!Number.isFinite(bpm)||bpm<=0||bpm>999)throw new Error('BPM must be >0 and ≤999');
   const runId=await invoke('begin_run');if(ticket!==epoch)return;
+  activeRunId=runId;
   const current=new Worker('./runner.js',{type:'module'});worker=current;
   ui.setRuntimeState('Running');ui.setStatus(`Running ${target}`);
   let inFlight=0,logs=0;
@@ -84,7 +85,7 @@ async function start(){
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
-  current.postMessage({type:'run',code,bpm,path:target,files:{...files}});
+  current.postMessage({type:'run',code,bpm,runId,path:target,files:{...files}});
 }
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
@@ -100,7 +101,15 @@ async function connectPort(direction){
   try{
     ui.setStatus(`Connecting ${direction.toLowerCase()}…`);
     await stop();
-    await invoke('connect_'+direction.toLowerCase(),{id});
+    if(direction==='Input') {
+      const generation=++inputGeneration;
+      const clockEvents=new window.__TAURI__.core.Channel();
+      clockEvents.onmessage=event=>{
+        if(generation!==inputGeneration||event.runId!==activeRunId)return;
+        worker?.postMessage({type:'clock',event});
+      };
+      await invoke('connect_input',{id,clockEvents});
+    } else await invoke('connect_output',{id});
     showConnection(await invoke('snapshot'));
     ui.setStatus(`${direction} connected`);
   }finally{

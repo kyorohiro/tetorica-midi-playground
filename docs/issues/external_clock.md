@@ -15,7 +15,7 @@
 
 ## Next integration steps
 
-1. Forward native transport events and timestamps to the script Worker; do not derive Clock events from the 100 ms UI snapshot poll.
+1. Implemented: native transport events use Tauri Channel with connection-relative monotonic timestamps, Run IDs and sequence numbers. The UI filters input generations and the Worker rejects stale/duplicate events. This does not use the 100 ms snapshot poll. Real-device delivery is not yet verified.
 2. Add explicit Internal / External clock selection. GarageBand note output can remain independent of the Clock input.
 3. Release sounding notes on Stop, timeout, or disconnect. Cancel/freeze waits consistently; never emit a catch-up burst after a gap.
 4. Specify how `play` note duration follows external tempo, including tempo changes after Note On. Native deadline-based Note Off currently uses a fixed millisecond duration.
