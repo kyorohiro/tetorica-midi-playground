@@ -101,3 +101,17 @@ Runは、エディターで開いているファイルとは別に、**Run file*
 `scale(root, name, octaves)` は major / minor / majorPentatonic / minorPentatonic に対応。`cycle(values)` は順に値を返し、カウンターはRun内で共有します。`cycle("lead", values)` で別のカウンターを指定できます。Runでリセットします。`nextBeat()` はRun開始を基準とする次の内部拍境界まで待機します。既存プロジェクトでは `/lead.js` をRun fileで選ぶと新しい初期サンプルを試せます。
 
 タイミング: BPM変更時も現在の拍位置を保ち、待機中のnextBeatにも反映します。拍の境界で呼ぶと次の拍まで待ちます。Workerタイマーは遅延する場合があり、サンプル精度や外部MIDI Clock同期は保証しません。
+
+## Loop-local helpers
+
+```js
+liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
+  await nextBeat();
+  await play(cycle(["E4", "G4", "B4"]), {duration: 0.08});
+  await beat(0.04);
+});
+// Elsewhere in your script:
+// stopLoop("lead");
+// stopAllLoops();
+```
+コールバック引数のヘルパーを使うと、cycleのカウンターがループごと・呼び出し順ごとに分かれ、await後の停止も有効になります。名前付きcycleもループ内で独立します。同名ループの置換はカウンターをリセットし、旧ループの専用ヘルパーを停止します。送信済みノートは指定時間（最大10秒）でNote Offになります。画面のStopは全ノートを即時解放します。引数を使わずグローバルヘルパーを呼ぶ従来コードは反復の境界で停止し、cycleは共有のままです。Runで全再起動する仕様は変わりません。

@@ -37,3 +37,49 @@ test('default index lead runs repeatedly through MIDI worker',async()=>{
   });
  });}finally{await w.terminate();}
 });
+async function runLoopScript(code){
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ const logs=[],notes=[];
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Loop timeout')),3000);
+  const fail=e=>{clearTimeout(timer);reject(e);};
+  w.on('error',fail);
+  w.on('message',m=>{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code});
+   if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='log')logs.push(m.text);
+   if(m.type==='error')fail(new Error(m.text));
+   if(m.type==='done'){clearTimeout(timer);resolve();}
+  });
+ });return {logs,notes};}finally{await w.terminate();}
+}
+test('scoped loops keep cycle slots separate across awaits and cancel waiting notes',async()=>{
+ const result=await runLoopScript(`
+ let a=0,b=0;
+ liveLoop('a',async({cycle,beat})=>{
+   log('a',cycle([1,2])); await beat(0.004); log('a2',cycle([8,9]));
+   if(++a===2)stopLoop('a');
+ });
+ liveLoop('b',async({cycle,beat})=>{
+   log('b',cycle([1,2])); await beat(0.006);
+   if(++b===2)stopLoop('b');
+ });
+ liveLoop('cancel',async({beat,play})=>{await beat(0.1);await play('C4');});
+ await beat(0.04);stopLoop('cancel');await beat(0.16);
+ stopAllLoops();
+ `);
+ assert.deepEqual(result.logs.filter(x=>x.startsWith('a ')),['a 1','a 2']);
+ assert.deepEqual(result.logs.filter(x=>x.startsWith('a2 ')),['a2 8','a2 9']);
+ assert.deepEqual(result.logs.filter(x=>x.startsWith('b ')),['b 1','b 2']);
+ assert.equal(result.notes.length,0);
+});
+test('same-name replacement cancels old scoped callback and all loops stop',async()=>{
+ const result=await runLoopScript(`
+ liveLoop('x',async({beat,play})=>{await beat(0.1);await play('C4');});
+ liveLoop('x',async({play})=>{await play('E4',{duration:0.002});stopLoop('x');});
+ await beat(0.02);
+ liveLoop('y',async({beat,play})=>{await beat(0.1);await play('G4');});
+ stopAllLoops();await beat(0.2);
+ `);
+ assert.deepEqual(result.notes.map(x=>x.note),[64]);
+});

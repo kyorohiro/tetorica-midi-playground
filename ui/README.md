@@ -102,3 +102,17 @@ Run executes the script selected in **Run file**, independently of the file open
 `scale(root, name, octaves)` supports major, minor, majorPentatonic and minorPentatonic. `cycle(values)` cycles through values; counters are shared within a Run. Use `cycle("lead", values)` to give a pattern its own counter. Run resets counters. `nextBeat()` waits for the next internal beat boundary shared by this Run. Select `/lead.js` to try the new default in an existing project.
 
 Timing: changing BPM preserves the current beat position and updates pending nextBeat waits. A call exactly on a boundary waits for the following beat. Worker timers may run late; this is not sample-accurate timing or external MIDI Clock synchronization.
+
+## Loop-local helpers
+
+```js
+liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
+  await nextBeat();
+  await play(cycle(["E4", "G4", "B4"]), {duration: 0.08});
+  await beat(0.04);
+});
+// Elsewhere in your script:
+// stopLoop("lead");
+// stopAllLoops();
+```
+Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Already-sent notes finish their scheduled duration (up to 10 seconds); the Stop button releases all notes immediately. Legacy callbacks using global helpers stop only at the iteration boundary and retain shared cycle counters. Run still restarts everything.
