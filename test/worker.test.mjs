@@ -254,7 +254,7 @@ test('outer output handles preserve parallel loop ownership across await',async(
  }finally{await w.terminate();}
 });
 
-for(const exampleName of ['01_multi_output.js','02_assigned_outputs.js']) test(`bundled ${exampleName} runs without assignments and sends three independent parts`,async()=>{
+for(const exampleName of ['01_multi_output.js','02_assigned_outputs.js','03_context_jsdoc.js']) test(`bundled ${exampleName} runs without assignments and preserves loop ownership`,async()=>{
  const {bundledExamples}=await import('../ui/example-files.js');
  const {readFile}=await import('node:fs/promises');
  const example=bundledExamples['/examples/'+exampleName];
@@ -271,8 +271,8 @@ for(const exampleName of ['01_multi_output.js','02_assigned_outputs.js']) test(`
    if(m.type==='done'){clearTimeout(timer);resolve();}
   });
  });
- assert.deepEqual(chips,['ym2612','sega-psg']);
- assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,1,1],[1,2,2],[2,1,3]]);
+ assert.deepEqual(chips,exampleName==='03_context_jsdoc.js'?['ym2612']:['ym2612','sega-psg']);
+ assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),exampleName==='03_context_jsdoc.js'?[[1,1,1]]:[[1,1,1],[1,2,2],[2,1,3]]);
  }finally{await w.terminate();}
 });
 

@@ -156,6 +156,7 @@ loadMonaco().then(monaco=>{
   $('editor').after(container);
   try {
     codeEditor=createFileEditor(monaco,container,(path,text)=>{files[path]=text;persist();});
+    codeEditor.syncFiles(files);
     codeEditor.open(selected,files[selected],isGuide(selected));
     $('editor').hidden=true;
   } catch(error) {container.remove();codeEditor=null;throw error;}

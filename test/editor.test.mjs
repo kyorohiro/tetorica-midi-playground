@@ -7,6 +7,8 @@ test('editor preserves models and view state and saves edits to their owning fil
  const editor={onDidChangeModelContent(fn){callback=fn;return {dispose(){}};},saveViewState(){return {cursor:12};},restoreViewState(state){restored=state;},setModel(model){active=model;},updateOptions(value){options=value;},getValue(){return active.text;},dispose(){}};
  const monaco={Uri:{from:value=>value},editor:{create:()=>editor,createModel(text,language,uri){const model={text,language,uri,dispose(){this.disposed=true;}};models.push(model);return model;}}};
  const adapter=createFileEditor(monaco,{},(...args)=>changes.push(args));
+ adapter.syncFiles({'/index.js':'first'});
+ adapter.syncFiles({'/index.js':'must not overwrite'});
  adapter.open('/index.js','first',false);active.text='edited';callback();
  adapter.open('/README.md','# guide',true);callback();assert.equal(options.readOnly,true);
  adapter.open('/index.js','edited',false);
@@ -23,11 +25,14 @@ test('MIDI completion covers public helpers and replaces only the current word',
  assert.ok(result.suggestions.some(s=>s.label==='liveLoop'));
  assert.deepEqual(result.suggestions[0].range,{startLineNumber:2,endLineNumber:2,startColumn:3,endColumn:6});
  assert.match(helperDocs.play,/beats/);
+ assert.deepEqual(provider.provideCompletionItems({getWordUntilPosition:()=>({startColumn:7,endColumn:7}),getLineContent:()=> 'piano.'},{lineNumber:1,column:7}).suggestions,[]);
 });
 
 test('JavaScript completion excludes DOM libraries while preserving language options',()=>{
  let options={allowJs:true,allowNonTsExtensions:true,lib:['dom','esnext']},diagnostics;
  configureJavaScript({languages:{typescript:{javascriptDefaults:{
+   addExtraLib:(source,path)=>{assert.match(source,/interface MidiOutput/);assert.equal(path,"file:///tetorica-api.d.ts");},
+   setEagerModelSync:value=>assert.equal(value,true),
    getCompilerOptions:()=>options,
    setCompilerOptions:value=>{options=value;},
    setDiagnosticsOptions:value=>{diagnostics=value;},

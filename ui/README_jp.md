@@ -242,3 +242,11 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 割り当てはローカル保存します。変更すると演奏が停止するので、再度Runしてください。Run開始時の割り当てをApplyでも使います。使わないスロットは未設定で構いません。未設定のスロットを使うとハンドル作成時にエラーになります。外部ポートはIDと名前で記録し、不在・改名時は再割り当てが必要です。同名の別機器には自動接続しません。初回play時にもNativeで接続先を確認します。内蔵音源はコードの`await enableSoundChip(...)`か手動Enableが必要です。
 
 `/examples/02_assigned_outputs.js`は内蔵音源を直接指定するので、そのままRunできます。MIDI画面で割り当て後、コメントの案内に沿って論理出力へ切り替えられます。CH省略時は1です。Keyboardとグローバルplayの出力選択は従来通りです。
+
+## 補完とJSDoc
+
+`examples/03_context_jsdoc.js`を開いて **Run file** に指定すると、DAWなしで内蔵YM2612の例を試せます。`piano.play()`、演奏オプション、音源ID、`MIDI_OUTPUT_01`〜`04`を補完します。
+
+`context`は`liveLoop("name", async context => { ... })`で受け取る引数です。グローバル変数ではありません。importした関数や引数ありのcallbackでは`context.playOutput(instrument, note, options)`を使うと、そのループの停止に発音が追従します。
+
+自作関数のJSDocでは`MidiOutput`、`MidiPlayOptions`、`MidiNoteOptions`、`MidiNote`、`TetoricaContext`を使えます。`@param`・`@returns`・`@typedef`による補完とホバーに対応します。FILES内の相対JavaScript importは、未選択のファイルも補完に使います。npmパッケージのimportや実行時の型検証を追加するものではありません。`screenLeft`等のDOM候補は除外し、Monacoを読み込めない場合のテキストエディターでは補完しません。

@@ -1,7 +1,10 @@
+import {apiTypes} from './api-types.js';
 // Worker scripts use ECMAScript built-ins, not the browser Window/DOM API.
 export function configureJavaScript(monaco) {
   const defaults = monaco.languages.typescript.javascriptDefaults;
   defaults.setCompilerOptions({...defaults.getCompilerOptions(), lib: ['es2022']});
+  defaults.addExtraLib(apiTypes, 'file:///tetorica-api.d.ts');
+  defaults.setEagerModelSync(true);
   defaults.setDiagnosticsOptions({noSemanticValidation: true, noSyntaxValidation: true});
 }
 
@@ -18,6 +21,13 @@ export function createFileEditor(monaco, container, onChange) {
     if (current && !current.readOnly) onChange(current.path, editor.getValue());
   });
   return {
+    syncFiles(files) {
+      for (const [path, text] of Object.entries(files)) {
+        if (/\.m?js$/i.test(path) && !models.has(path)) {
+          models.set(path, monaco.editor.createModel(text, 'javascript', monaco.Uri.from({scheme: 'file', path})));
+        }
+      }
+    },
     open(path, text, readOnly) {
       if (current) views.set(current.path, editor.saveViewState());
       let model = models.get(path);
@@ -64,6 +74,9 @@ export function registerHelpers(monaco) {
   return monaco.languages.registerCompletionItemProvider('javascript', {
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
+      // Member completion comes from the language service, not global helper names.
+      const prefix=model.getLineContent?.(position.lineNumber).slice(0,word.startColumn-1)??'';
+      if(/\.\s*$/.test(prefix))return {suggestions:[]};
       const range = {startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn};
       return {suggestions: Object.entries(helperDocs).map(([name, detail]) => ({label: name, insertText: name, detail, kind: monaco.languages.CompletionItemKind.Function, range}))};
     },

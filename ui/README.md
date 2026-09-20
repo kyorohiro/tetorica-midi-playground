@@ -244,3 +244,11 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 Assignments are saved locally. Changing one stops playback; press Run again. Each Run takes a snapshot, also used by Apply. Unused slots may remain unassigned. Using an unassigned slot is an error when creating its handle. External devices are saved by ID and name; missing/renamed devices require reassignment, with no name-based fallback. Device availability is checked again on first play. Internal destinations still require `await enableSoundChip(...)` or manual Enable.
 
 `/examples/02_assigned_outputs.js` runs with internal destinations by default. Its comments explain how to switch to assigned slots after configuring them in MIDI connections. Channel defaults to 1. Keyboard and global `play()` still use their existing output selector.
+
+## Completion and JSDoc
+
+Open `examples/03_context_jsdoc.js` and select it as **Run file** to try the built-in YM2612 example without a DAW. The editor completes `piano.play()`, play options, sound chip IDs and `MIDI_OUTPUT_01`–`04`.
+
+`context` is the parameter in `liveLoop("name", async context => { ... })`, not a global variable. Use `context.playOutput(instrument, note, options)` in imported helpers or callbacks with explicit parameters to keep notes attached to that loop.
+
+For your own functions, use JSDoc types `MidiOutput`, `MidiPlayOptions`, `MidiNoteOptions`, `MidiNote`, and `TetoricaContext`. `@param`, `@returns` and `@typedef` support completion and hover. Relative JavaScript imports in FILES are available to the editor even before opening their tabs. This does not add npm package imports or runtime type validation. DOM globals such as `screenLeft` are excluded. The plain-text editor fallback has no completion.

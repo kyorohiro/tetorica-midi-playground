@@ -1,6 +1,6 @@
 # MIDI Playground TODO 002
 
-リリース後に順番に進める改善。00のNative YM2612 + Sega PSG試作を実装中。01の複数音源・複数CH送信を実装中。02〜04は未完了。
+リリース後に順番に進める改善。00のNative YM2612 + Sega PSG試作を実装中。01の複数音源・複数CH送信を実装中。02の補完を実装済み（実画面確認は残る）。03〜04は未完了。
 既存機能の残課題は [todo.md](todo.md) を参照。
 
 ## 進め方
@@ -122,14 +122,16 @@ const lead = midi.output(MIDI_OUTPUT_02, { channel: 1 });
 
 ## 02. context・JSDoc・補完の強化
 
-- [ ] 実際に公開している`context`と関連ヘルパーのAPIを調査し、実装と型定義を一致させる。存在しないメンバーを補完に出さない。
-- [ ] `context.`のメンバー、引数、戻り値、説明が補完・ホバーで表示されるようにする。
-- [ ] `enableSoundChip()`の音源ID、内蔵出力の固定ID、`MIDI_OUTPUT_01`等の識別子を補完・ホバーに追加する。
-- [ ] `midi.output()`の引数と戻り値を型定義し、`const piano = midi.output(...)`から`piano.play()`とオプションの補完をつなげる。
-- [ ] ユーザーのJSDoc（`@param`、`@returns`、`@typedef`）による引数・オブジェクトの補完を確認する。公開する演奏先の型名・参照方法も決める。
-- [ ] FILES内の相対import先の型・JSDocがどこまで解決されるか確認し、対応範囲と制約を明記する。
-- [ ] 通常は型推論で補完でき、推論できない関数引数などをJSDocで補える例を用意する。
-- [ ] Monacoの言語サービスを使うテストで、実際の補完候補・説明を検証する。`screenLeft`など不要なDOM候補の除外も維持する。
+- [x] 実際に公開している`context`と関連ヘルパーのAPIを調査し、実装と型定義を一致させる。存在しないメンバーを補完に出さない。
+- [x] `context.`のメンバー、引数、戻り値、説明が補完・ホバーで表示されるようにする。
+- [x] `enableSoundChip()`の音源ID、内蔵出力の固定ID、`MIDI_OUTPUT_01`等の識別子を補完・ホバーに追加する。
+- [x] `midi.output()`の引数と戻り値を型定義し、`const piano = midi.output(...)`から`piano.play()`とオプションの補完をつなげる。
+- [x] ユーザーのJSDoc（`@param`、`@returns`、`@typedef`）による引数・オブジェクトの補完を確認する。公開する演奏先の型名・参照方法も決める。
+- [x] FILES内の相対import先の型・JSDocがどこまで解決されるか確認し、対応範囲と制約を明記する。
+- [x] 通常は型推論で補完でき、推論できない関数引数などをJSDocで補える例を用意する。
+- [x] Monacoの言語サービスを使うテストで、実際の補完候補・説明を検証する。`screenLeft`など不要なDOM候補の除外も維持する。
+
+実装メモ: `ui/playground-api.d.ts`をMonacoへ登録。`context`はliveLoopのcallback引数で、グローバルには追加しない。FILESのJSモデルを起動時に登録し、相対import先のJSDocも利用する。`examples/03_context_jsdoc.js`を追加。Monaco実言語サービスで補完・ホバー・相対importを検証し、Workerでサンプルの演奏とループ所有者を検証。Nativeアプリの実画面での候補表示は未確認。npm importや実行時型検証は対象外。
 
 ## 03. FILESから試せるexamples
 
