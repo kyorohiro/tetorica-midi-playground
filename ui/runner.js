@@ -1,3 +1,4 @@
+import {createClockWait} from './clock-wait.js';
 import {createClockReceiver} from './clock-receiver.js';
 import {prepareModules} from './modules.js';
 import {createKeyboardHandlers} from './keyboard.js';
@@ -6,7 +7,7 @@ import {createMidiHelpers} from './runtime.js';
 import {installPlaygroundExecutionGuards} from './shared/playground_execution.js';
 installPlaygroundExecutionGuards(globalThis);
 let sequence=0;
-let keyboard=null,clockReceiver=null;
+let keyboard=null,clockReceiver=null,external=null;
 const pending=new Map();
 const send=payload=>new Promise((resolve,reject)=>{
   if(pending.size>=64){reject(new Error('Too many concurrent MIDI requests'));return;}
@@ -14,7 +15,7 @@ const send=payload=>new Promise((resolve,reject)=>{
 });
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 onmessage=async ({data})=>{
-  if(data.type==='clock'){clockReceiver?.receive(data.event);return;}
+  if(data.type==='clock'){if(external)external.receive(data.event);else clockReceiver?.receive(data.event);return;}
   if(data.type==='keyboard'){await keyboard?.dispatch(data.event);return;}
   if(data.type==='reply'){
     const p=pending.get(data.id);pending.delete(data.id);
@@ -22,16 +23,19 @@ onmessage=async ({data})=>{
   }
   if(data.type!=='run')return;
   clockReceiver=createClockReceiver(data.runId);
+  external=data.externalClock?createClockWait(clockReceiver,{sleep,onStop:text=>postMessage({type:'error',text})}):null;
+  if(external)setInterval(()=>{try{external.check();}catch{}},25);
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
+  if(external){api.beat=count=>external.beat(count);api.nextBeat=()=>external.nextBeat();}
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
     // Share the Run clock; keep cancellation and cycle state local to this loop.
     let slot=0;const cycles=new Map();
     const helpers={...api};
-    Object.assign(helpers,api.createLoopTiming(check));
+    Object.assign(helpers,external?{beat:count=>external.beat(count,check),nextBeat:()=>external.nextBeat(check)}:api.createLoopTiming(check));
     helpers.play=async(note,options)=>{
       check();
       await api.play(note,options,payload=>{check();return send({...payload,owner});});
@@ -48,6 +52,7 @@ onmessage=async ({data})=>{
   Object.assign(api,{stopLoop:loops.stopLoop,stopAllLoops:loops.stopAllLoops});
   const liveLoop=loops.liveLoop;
   try {
+    if(external){postMessage({type:'waiting-clock'});await external.ready();}
     const modules=await prepareModules(data.files||{},data.code,data.path||'/index.js');
     const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
     await new AsyncFunction(...Object.keys(api),'liveLoop','console',modules.code)(...Object.values(api),liveLoop,{log,warn:log,error:log});

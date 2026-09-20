@@ -77,7 +77,7 @@ GarageBandの仮想入力がある場合、この設定は不要です。
 
 ## 今回の実験版の範囲
 
-スクリプトは内部BPMで動きます。GarageBandのテンポとは自動同期しません。
+既定では内部BPMで動きます。試験的な外部拍待機は末尾の説明を参照してください。GarageBandのテンポとは自動同期しません。
 MIDIタブのClock受信テストと、コード実行はまだ別です。
 FM音源、音声出力、エフェクト、Monaco、外部Clockでのコード実行は未搭載。
 読み込むJavaScriptは自分で内容を確認したものを使ってください。
@@ -166,3 +166,9 @@ Run fileでは文字列の相対パスで `await import()` を使います。読
 MonacoでJavaScriptの色分け、検索（Command/Ctrl+F）、補完（Ctrl+Space）、ファイル別Undo・カーソル位置保持が使えます。MIDIヘルパーの補完にはこのアプリの仕様を表示します。ガイドは編集できません。Command/Ctrl+EnterでRun fileを実行、Shift+Escapeで停止します。ローカル同梱のためCDN接続は不要で、読み込み失敗時はtextareaを使えます。Run fileはヘルパーを渡したasync関数内で実行するため、JavaScriptの型・構文診断は無効です。モジュール間の型解決は未対応です。
 
 補完はECMAScript標準とMIDIヘルパーを対象にし、screenLeftなどのWindow/DOMグローバルを除外します。ローカル変数・JavaScript標準メソッドの補完は維持します。
+
+## 外部拍Clock（試験版）
+
+MIDI設定でClock入力を接続し、**External MIDI (beat waits only)** を選択してRunを押した後、送信元でStartまたはContinueを送ります。スクリプトはその受信まで待ちます。beat・nextBeatは24パルス＝1拍で待機し、setBpmでは変化しません。**playの音長は引き続きBPM欄／setBpmで決めた固定時間です**。発音全体のテンポ追従は未完成です。
+
+Stop・再Start・1秒のClock途絶でRunを終了し、Note Offを送ります。再開はRunを押し直してから送信元を開始してください。Continueは新しく待機中のRunを開始できますが、終了したスクリプトを再開するものではありません。接続先・Clockモード変更でも停止します。DAWでのタイミング実測は未実施です。

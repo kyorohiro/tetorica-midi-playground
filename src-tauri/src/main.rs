@@ -26,6 +26,9 @@ struct Session {
     last_clock: Option<Instant>,
     error: Option<String>,
     run_id: u64,
+    external_clock: bool,
+    external_started: bool,
+    transport_stop: bool,
     notes: HashMap<(u8, u8), Instant>,
     note_owners: HashMap<(u8, u8), u64>,
 }
@@ -55,7 +58,7 @@ impl Session {
         velocity: u8,
         duration_ms: u64,
     ) -> Result<(), String> {
-        if run_id != self.run_id {
+        if run_id != self.run_id || (self.external_clock && (!self.external_started || !self.clock.running || self.transport_stop)) {
             return Err("Run was stopped".into());
         }
         if note > 127
@@ -113,6 +116,12 @@ impl Session {
         Ok(())
     }
     fn expire(&mut self, now: Instant) -> Result<(), String> {
+        if self.external_clock && self.external_started && (self.transport_stop || !self.clock.running || self.last_clock.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(1))) {
+            self.run_id += 1;
+            self.external_clock = false;
+            self.external_started = false;
+            self.stop()?;
+        }
         let keys: Vec<_> = self
             .notes
             .iter()
@@ -215,6 +224,14 @@ fn connect_input(id: String, clock_events: tauri::ipc::Channel<ClockEvent>, stat
                         return;
                     }
                     let mut s = shared.lock().unwrap();
+                    if s.external_clock && matches!(bytes[0],0xfa|0xfb) {
+                        if s.external_started && bytes[0]==0xfa {
+                            // Reset invalidates queued notes before asynchronous UI delivery.
+                            s.transport_stop = true;
+                        }
+                        s.external_started=true;
+                        s.last_clock=Some(Instant::now());
+                    }
                     s.clock.receive(timestamp, bytes[0]);
                     if bytes[0] == 0xf8 {
                         s.last_clock = Some(Instant::now());
@@ -271,6 +288,8 @@ fn set_follow(enabled: bool, state: tauri::State<AppState>) -> Result<(), String
 #[tauri::command]
 fn stop_notes(state: tauri::State<AppState>) -> Result<(), String> {
     let mut s = state.session.lock().unwrap();
+    s.external_clock=false;
+    s.external_started=false;
     s.run_id += 1;
     s.follow = false;
     s.stop()
@@ -289,9 +308,13 @@ fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
     result
 }
 #[tauri::command]
-fn begin_run(state: tauri::State<AppState>) -> Result<u64, String> {
+fn begin_run(external_clock: Option<bool>, state: tauri::State<AppState>) -> Result<u64, String> {
+    if external_clock.unwrap_or(false) && state.input.lock().unwrap().is_none() {return Err("Connect a Clock input first".into());}
     let mut s = state.session.lock().unwrap();
     s.run_id += 1;
+    s.external_clock=external_clock.unwrap_or(false);
+    s.external_started=false;
+    s.transport_stop=false;
     s.follow = false;
     s.stop()?;
     if s.output.is_none() {
@@ -421,6 +444,27 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn external_transport_releases_notes_and_rejects_queued_requests() {
+        for reset in [false, true] {
+            let messages = Arc::new(Mutex::new(Vec::new()));
+            let mut s = Session { output: Some(Box::new(Fake(messages.clone()))), run_id: 7,
+                external_clock: true, external_started: true, ..Default::default() };
+            s.clock.running = true;
+            s.last_clock = Some(Instant::now());
+            s.script_note(7,60,1,90,10000).unwrap();
+            if reset {s.transport_stop=true;} else {s.clock.running=false;}
+            assert!(s.script_note(7,64,1,90,100).is_err());
+            s.expire(Instant::now()).unwrap();
+            assert!(s.notes.is_empty());
+            assert!(s.script_note(7,64,1,90,100).is_err());
+            assert!(messages.lock().unwrap().contains(&vec![0x80,60,0]));
+        }
+        let mut s=Session {external_clock:true,external_started:true,run_id:9,..Default::default()};
+        s.clock.running=true;
+        s.last_clock=Some(Instant::now()-Duration::from_secs(2));
+        s.expire(Instant::now()).unwrap();assert_eq!(s.run_id,10);
     }
     #[test]
     fn owner_release_preserves_retriggered_notes_and_other_channels() {

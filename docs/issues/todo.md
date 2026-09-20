@@ -9,7 +9,7 @@ FM2612 Playgroundとの機能差を整理する。MIDI版は基本的な演奏�
 - `liveLoop`、画面のRun / Stop。Runごとに全ループを再起動する。
 - Run file選択（既定 `/index.js`）、ファイル保存・import/export。
 - MIDI出力選択時の自動接続、接続先・状態の表示。
-- 外部MIDI Clockの監視とC4テスト。JavaScriptの演奏は内部BPMで動作する。
+- 外部MIDI Clockの監視とC4テスト。既定は内部BPM、外部拍待機は試験対応（play音長は内部BPM）。
 
 ## 優先1: 拍・ループの互換性
 
@@ -57,7 +57,8 @@ FM2612 Playgroundとの機能差を整理する。MIDI版は基本的な演奏�
 - [ ] Clock監視・テストから、スクリプト演奏の同期へ拡張する。
 - [x] Start / Continue / Stop・Clock途絶・切断の拍位置管理を定義し、環境非依存の状態管理とテストを追加。詳細は[external_clock.md](external_clock.md)。
 - [x] native受信からTauri ChannelでWorkerへ直接Clockを転送。Run ID・入力接続世代・連番で古い/重複イベントを除外。画面snapshotポーリングとは分離。
-- [ ] 停止・途絶時のNote Offと待機処理、再接続を統合検証し、外部Clock演奏モードを有効化する。現時点の演奏は内部BPMのまま。
+- [x] 外部拍Clock試験モード。Start/Continueまで待機、beat/nextBeatをパルス駆動。Stop・再Start・途絶でRun終了、nativeでNote Offと古い要求の拒否。再開にはRunが必要。
+- [ ] play音長を外部拍へ追従させる。現時点はBPM欄による固定ミリ秒のまま。実機の切断・再接続・IPC遅延を含む統合検証は未完了。
 - [ ] 実機のClock入力からChannel経由の連続イベント配信を確認する。
 - [ ] `nextBeat()`による内部拍同期と、外部Clock同期を区別して説明・検証する。
 
@@ -75,7 +76,7 @@ FM音色、PSG、DAC、サンプル、エフェクトは現在未搭載。
 
 ## 検証記録
 
-- 直近のJSテスト: 39件成功（外部Clockの受信世代・順序・24pulse転送を追加）。
+- 直近のJSテスト: 41件成功（外部Clockの受信世代・順序・24pulse転送を追加）。
 - 英日ガイド更新後の生成内容一致テスト: 成功。
 - 今回のループ・音楽ヘルパー追加後のGarageBand実機確認: 未実施。
 - `chord`は音名配列を生成するだけで、自動で同時発音はしない。

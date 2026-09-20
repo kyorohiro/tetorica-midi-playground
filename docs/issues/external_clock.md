@@ -11,7 +11,7 @@
 - Tempo changes alter pulse spacing; they do not reset musical position.
 - Only monotonic timestamps from the same clock domain are accepted. SPP/seek is not supported in this stage.
 
-`ui/external-clock.js` implements and tests these rules independently of DOM, native MIDI, and Worker scheduling. It is not connected to playback yet. Existing playback still uses internal BPM.
+`ui/external-clock.js` implements and tests these rules independently of DOM, native MIDI, and Worker scheduling. The trial integration below connects beat waits; note durations still use internal BPM.
 
 ## Next integration steps
 
@@ -22,3 +22,7 @@
 5. Test Start during pending waits, Continue, input changes, and stale events from a previous Run. Then measure timing on a DAW capable of sending MIDI Clock.
 
 Do not label this stage as completed external synchronization: event delivery, scheduling and Note Off integration remain outstanding.
+
+## Trial beat-wait integration
+
+External MIDI (beat waits only) now arms the Worker until Start/Continue. Beat waits use received pulse positions. Stop, repeated Start or timeout ends the entire Run (not a resumable pause); native invalidation and Note Off do not depend on a responsive UI. Run must be pressed again. `play` retains fixed millisecond deadlines derived from internal BPM. Full external note-duration tracking and real-device validation remain open. The pure transport state retains Continue semantics, while script execution deliberately terminates on interruption.

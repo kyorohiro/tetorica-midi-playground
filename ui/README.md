@@ -78,7 +78,7 @@ Use “Import” to add a JavaScript file. Imported files do not run automatical
 
 ## Scope of this experimental release
 
-Scripts use internal BPM. They do not automatically follow GarageBand's tempo.
+Scripts default to internal BPM; see External beat clock below. They do not automatically follow GarageBand's tempo.
 The MIDI tab's Clock test and code execution are still separate.
 FM synthesis, audio output, effects, Monaco, and external-clock-driven code
 execution are not included yet.
@@ -168,3 +168,9 @@ Pass music helpers as function arguments when a module needs them; modules do no
 Monaco provides JavaScript highlighting, search (Command/Ctrl+F), completion (Ctrl+Space), and per-file undo and cursor history. MIDI helper suggestions describe this app’s API. Guides remain read-only. Command/Ctrl+Enter runs the selected Run file; Shift+Escape stops. Editor assets are bundled locally, with a textarea fallback if loading fails. JavaScript type/syntax diagnostics are disabled because Run files execute inside an async function with injected helpers. Cross-module type resolution is not provided.
 
 Completion uses ECMAScript built-ins and MIDI helpers; browser Window/DOM globals such as screenLeft are excluded. Local variables and standard JavaScript methods remain available.
+
+## External beat clock (trial)
+
+Connect a Clock input in MIDI settings, select **External MIDI (beat waits only)**, then press Run before sending MIDI Start or Continue. Scripts wait for that message. `beat` and `nextBeat` follow incoming pulses (24 per beat); `setBpm` does not change these waits. **play duration still uses the BPM field / setBpm and a fixed native Note Off deadline**, so this is not full tempo-following playback.
+
+MIDI Stop, a repeated Start, or a one-second Clock gap ends the Run and releases notes. Press Run again before restarting the sender. Continue can start a newly armed Run, but does not resume a stopped script. Changing ports or the clock mode also stops the Run. This experimental path still needs DAW timing verification.

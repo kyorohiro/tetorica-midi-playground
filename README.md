@@ -15,7 +15,7 @@ yet included; the editor currently uses a textarea.
 
 Connect an output in **MIDI settings**, select `/index.js` in **Run file**, and press **Run**.
 The viewed file and Run file are independent. Select `/loop.js` in Run file to try a loop. `loop.js` repeats notes until **Stop**. GarageBand needs no Clock
-setup for this. Code uses **internal BPM**, not the external Clock input.
+setup for this. Code defaults to **internal BPM**. External beat waits are experimental; see the in-app guide.
 
 ```js
 setBpm(120);
@@ -37,7 +37,7 @@ FILES modules can be loaded with `await import("./notes.js")` from the Run file.
 Imported modules support static relative imports and exports; see the in-app guide.
 
 Audio, FM presets/effects, SPP/seek, predictive scheduling,
-external-Clock-driven scripts and Windows builds are not implemented yet.
+full external-Clock note-duration tracking and Windows builds are not implemented yet.
 BPM display in the MIDI tab is an interval estimate, not a PLL.
 
 ### Run

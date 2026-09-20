@@ -62,7 +62,8 @@ async function start(){
   const code=runSource(files,target);
   const ticket=epoch+1;await stop();if(ticket!==epoch)return;const bpm=Number($('bpm').value);
   if(!Number.isFinite(bpm)||bpm<=0||bpm>999)throw new Error('BPM must be >0 and ≤999');
-  const runId=await invoke('begin_run');if(ticket!==epoch)return;
+  const externalClock=$('clockMode').value==='external';
+  const runId=await invoke('begin_run',{externalClock});if(ticket!==epoch)return;
   activeRunId=runId;
   const current=new Worker('./runner.js',{type:'module'});worker=current;
   ui.setRuntimeState('Running');ui.setStatus(`Running ${target}`);
@@ -71,7 +72,8 @@ async function start(){
   const enqueueMidi=fn=>{const task=midiQueue.then(()=>{if(current!==worker||ticket!==epoch)return;return fn();});midiQueue=task.catch(()=>{});return task;};
   current.onmessage=async({data})=>{
     if(current!==worker||ticket!==epoch)return;
-    if(data.type==='note'){
+    if(data.type==='waiting-clock'){ui.setRuntimeState('Waiting');ui.setStatus('Waiting for external MIDI Start / Continue.');}
+    else if(data.type==='note'){
       if(++inFlight>64){await run(stop);ui.setStatus('Too many concurrent notes');return;}
       try{await enqueueMidi(()=>invoke('play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
       catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
@@ -85,8 +87,9 @@ async function start(){
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
-  current.postMessage({type:'run',code,bpm,runId,path:target,files:{...files}});
+  current.postMessage({type:'run',code,bpm,runId,externalClock,path:target,files:{...files}});
 }
+$('clockMode').onchange=()=>run(stop);
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
 async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
