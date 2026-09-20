@@ -166,3 +166,5 @@ Pass music helpers as function arguments when a module needs them; modules do no
 ## Editor
 
 Monaco provides JavaScript highlighting, search (Command/Ctrl+F), completion (Ctrl+Space), and per-file undo and cursor history. MIDI helper suggestions describe this app’s API. Guides remain read-only. Command/Ctrl+Enter runs the selected Run file; Shift+Escape stops. Editor assets are bundled locally, with a textarea fallback if loading fails. JavaScript type/syntax diagnostics are disabled because Run files execute inside an async function with injected helpers. Cross-module type resolution is not provided.
+
+Completion uses ECMAScript built-ins and MIDI helpers; browser Window/DOM globals such as screenLeft are excluded. Local variables and standard JavaScript methods remain available.

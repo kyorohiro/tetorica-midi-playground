@@ -1,4 +1,4 @@
-import {loadMonaco,createFileEditor,registerHelpers} from './editor.js';
+import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
 import {keyData} from './keyboard.js';
 import {connectionStatus} from './connection.js';
 import {leadExample} from './examples.js';
@@ -120,7 +120,7 @@ run(refresh);
 
 // Keep the textarea usable while the locally bundled editor loads or if it fails.
 loadMonaco().then(monaco=>{
-  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({noSemanticValidation:true,noSyntaxValidation:true});
+  configureJavaScript(monaco);
   registerHelpers(monaco);
   const container=document.createElement('div');container.id='monacoEditor';
   $('editor').after(container);

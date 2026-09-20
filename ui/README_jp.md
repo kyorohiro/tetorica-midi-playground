@@ -164,3 +164,5 @@ Run fileでは文字列の相対パスで `await import()` を使います。読
 ## エディター
 
 MonacoでJavaScriptの色分け、検索（Command/Ctrl+F）、補完（Ctrl+Space）、ファイル別Undo・カーソル位置保持が使えます。MIDIヘルパーの補完にはこのアプリの仕様を表示します。ガイドは編集できません。Command/Ctrl+EnterでRun fileを実行、Shift+Escapeで停止します。ローカル同梱のためCDN接続は不要で、読み込み失敗時はtextareaを使えます。Run fileはヘルパーを渡したasync関数内で実行するため、JavaScriptの型・構文診断は無効です。モジュール間の型解決は未対応です。
+
+補完はECMAScript標準とMIDIヘルパーを対象にし、screenLeftなどのWindow/DOMグローバルを除外します。ローカル変数・JavaScript標準メソッドの補完は維持します。

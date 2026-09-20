@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createFileEditor,registerHelpers,helperDocs} from '../ui/editor.js';
+import {createFileEditor,registerHelpers,helperDocs,configureJavaScript} from '../ui/editor.js';
 import {createMidiHelpers} from '../ui/runtime.js';
 test('editor preserves models and view state and saves edits to their owning file',()=>{
  const models=[],changes=[];let callback,active,options,restored;
@@ -23,4 +23,16 @@ test('MIDI completion covers public helpers and replaces only the current word',
  assert.ok(result.suggestions.some(s=>s.label==='liveLoop'));
  assert.deepEqual(result.suggestions[0].range,{startLineNumber:2,endLineNumber:2,startColumn:3,endColumn:6});
  assert.match(helperDocs.play,/beats/);
+});
+
+test('JavaScript completion excludes DOM libraries while preserving language options',()=>{
+ let options={allowJs:true,allowNonTsExtensions:true,lib:['dom','esnext']},diagnostics;
+ configureJavaScript({languages:{typescript:{javascriptDefaults:{
+   getCompilerOptions:()=>options,
+   setCompilerOptions:value=>{options=value;},
+   setDiagnosticsOptions:value=>{diagnostics=value;},
+ }}}});
+ assert.deepEqual(options,{allowJs:true,allowNonTsExtensions:true,lib:['es2022']});
+ assert.equal(diagnostics.noSemanticValidation,true);
+ assert.ok(helperDocs.play);
 });

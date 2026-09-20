@@ -1,3 +1,10 @@
+// Worker scripts use ECMAScript built-ins, not the browser Window/DOM API.
+export function configureJavaScript(monaco) {
+  const defaults = monaco.languages.typescript.javascriptDefaults;
+  defaults.setCompilerOptions({...defaults.getCompilerOptions(), lib: ['es2022']});
+  defaults.setDiagnosticsOptions({noSemanticValidation: true, noSyntaxValidation: true});
+}
+
 // Models retain per-file undo history and cursor/scroll state across FILES switches.
 export function createFileEditor(monaco, container, onChange) {
   const models = new Map(), views = new Map();
