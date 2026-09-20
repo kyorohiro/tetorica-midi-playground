@@ -254,11 +254,11 @@ test('outer output handles preserve parallel loop ownership across await',async(
  }finally{await w.terminate();}
 });
 
-test('bundled multi-output example initializes both chips and sends three independent parts',async()=>{
+for(const exampleName of ['01_multi_output.js','02_assigned_outputs.js']) test(`bundled ${exampleName} runs without assignments and sends three independent parts`,async()=>{
  const {bundledExamples}=await import('../ui/example-files.js');
  const {readFile}=await import('node:fs/promises');
- const example=bundledExamples['/examples/01_multi_output.js'];
- assert.equal(example,await readFile(new URL('../ui/examples/01_multi_output.js',import.meta.url),'utf8'));
+ const example=bundledExamples['/examples/'+exampleName];
+ assert.equal(example,await readFile(new URL('../ui/examples/'+exampleName,import.meta.url),'utf8'));
  const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));const notes=[],chips=[];
  try{await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('example timeout')),3000);
@@ -273,5 +273,20 @@ test('bundled multi-output example initializes both chips and sends three indepe
  });
  assert.deepEqual(chips,['ym2612','sega-psg']);
  assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,1,1],[1,2,2],[2,1,3]]);
+ }finally{await w.terminate();}
+});
+
+test('worker exposes logical output identifiers and sends selected port identity',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));const outputs=[],notes=[];
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('slot timeout')),3000);
+  w.on('error',reject);w.on('message',m=>{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,outputMappings:{MIDI_OUTPUT_01:{kind:'port',id:'saved-id',name:'Piano'}},code:`const p=midi.output(MIDI_OUTPUT_01,{channel:4}); await p.play('C4',{duration:0.002});`});
+   if(m.type==='output'){outputs.push(m.payload);w.postMessage({type:'reply',id:m.id,value:3});}
+   if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='error'){clearTimeout(timer);reject(Error(m.text));}
+   if(m.type==='done'){clearTimeout(timer);resolve();}
+  });
+ });assert.deepEqual(outputs,[{name:'Piano',portId:'saved-id'}]);assert.equal(notes[0].route,3);assert.equal(notes[0].channel,4);
  }finally{await w.terminate();}
 });

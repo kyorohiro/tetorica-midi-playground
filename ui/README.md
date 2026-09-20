@@ -211,7 +211,7 @@ liveLoop("piano", async () => {
 
 `midi.output()` creates a handle synchronously. Its connection opens on the first `play()`, and handles using the same port share the connection. Names of external MIDI ports are also accepted; missing or ambiguous names are errors. Channels are 1–16 (default 1) and belong to the handle. `play()` uses beats for duration and returns a Promise that resolves after the note duration; awaiting it is optional, and failures are reported in Console and stop the run. At most 16 additional script output connections are allowed. The MIDI panel shows their count separately from the selected Keyboard/global-play output.
 
-`enableSoundChip()` currently starts the shared YM2612 + Sega PSG rack even if only one chip is requested. Repeated calls preserve existing sound/settings. Per-chip enable and logical `MIDI_OUTPUT_01` mappings are not implemented yet. Stop releases script connections/notes but keeps the rack enabled. Changing the MIDI-panel Enable setting stops playback first. To audition with Keyboard afterward, select its output in MIDI settings.
+`enableSoundChip()` currently starts the shared YM2612 + Sega PSG rack even if only one chip is requested. Repeated calls preserve existing sound/settings. Per-chip enable is not implemented yet. Stop releases script connections/notes but keeps the rack enabled. Changing the MIDI-panel Enable setting stops playback first. To audition with Keyboard afterward, select its output in MIDI settings.
 
 Direct inline, zero-argument, block-body `liveLoop` callbacks automatically bind calls such as `piano.play()` for locally declared `midi.output()` handles to their loop owner. For explicit callbacks or imported helpers, pass the loop-local helper:
 
@@ -231,3 +231,16 @@ Open **YM2612**, choose **MIDI channel**, edit Algorithm / Feedback and the four
 The editor supports multiplier, detune (raw register value), total level, rate scaling, attack/decay/sustain/release rates and sustain level. Higher TL means quieter; MULTI 0 means ½. Velocity changes carrier level according to the algorithm. Six physical voices remain shared across all channels.
 
 Apply affects the next Note On only; held notes retain their patch. Stop and rack disable/enable preserve channel patches during this app session. App restart resets patches. Switching channels or Reload discards un-applied edits. Preset file saving/loading, LFO, AM, PMS/AMS and SSG-EG are not implemented in this editor yet.
+
+## MIDI output assignments
+
+In **MIDI connections → Script output assignments**, assign `MIDI_OUTPUT_01` through `MIDI_OUTPUT_04` to internal sound IDs or external MIDI ports. Then use the identifier without quotes:
+
+```js
+const piano = midi.output(MIDI_OUTPUT_01, {channel: 1});
+const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
+```
+
+Assignments are saved locally. Changing one stops playback; press Run again. Each Run takes a snapshot, also used by Apply. Unused slots may remain unassigned. Using an unassigned slot is an error when creating its handle. External devices are saved by ID and name; missing/renamed devices require reassignment, with no name-based fallback. Device availability is checked again on first play. Internal destinations still require `await enableSoundChip(...)` or manual Enable.
+
+`/examples/02_assigned_outputs.js` runs with internal destinations by default. Its comments explain how to switch to assigned slots after configuring them in MIDI connections. Channel defaults to 1. Keyboard and global `play()` still use their existing output selector.

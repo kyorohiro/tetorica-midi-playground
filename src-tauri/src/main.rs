@@ -305,21 +305,27 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
     s.output_name = Some(name);
     Ok(())
 }
+fn resolve_output_port(ports:&[Port],wanted:&str,id:Option<&str>)->Result<usize,String> {
+    let matches:Vec<_>=ports.iter().enumerate().filter(|(_,p)|p.name==wanted&&id.is_none_or(|id|p.id==id)).map(|(i,_)|i).collect();
+    if matches.len()!=1 {return Err(format!("MIDI output '{}' has {} matches; refresh and reassign the destination",wanted,matches.len()));}
+    Ok(matches[0])
+}
 #[tauri::command]
-fn script_output(run_id:u64, name:String, state:tauri::State<AppState>, rack:tauri::State<test_synth::Rack>)->Result<u64,String> {
+fn script_output(run_id:u64, name:String, port_id:Option<String>, state:tauri::State<AppState>, rack:tauri::State<test_synth::Rack>)->Result<u64,String> {
     let mut s=state.session.lock().unwrap();
     if s.run_id!=run_id {return Err("Run was stopped".into());}
     let output=MidiOutput::new("Tetorica Script").map_err(|e|e.to_string())?;
-    let internal=match name.as_str() { "tetorica-ym2612"=>Some("Tetorica YM2612"),"tetorica-sega-psg"=>Some("Tetorica Sega PSG"),_=>None };
+    let internal=match (port_id.is_none(),name.as_str()) { (true,"tetorica-ym2612")=>Some("Tetorica YM2612"),(true,"tetorica-sega-psg")=>Some("Tetorica Sega PSG"),_=>None };
     if internal.is_some() && !rack.status().enabled {return Err("Call await enableSoundChip(...) first".into());}
     let wanted=internal.unwrap_or(&name);
-    let ports:Vec<_>=output.ports().into_iter().filter(|p|output.port_name(p).ok().as_deref()==Some(wanted)).collect();
-    if ports.len()!=1 {return Err(format!("MIDI output '{}' has {} matches; choose a unique available port",wanted,ports.len()));}
-    let id=ports[0].id();
+    let ports=output.ports();
+    let descriptions:Vec<_>=ports.iter().map(|p|Ok(Port{id:p.id(),name:output.port_name(p).map_err(|e|e.to_string())?})).collect::<Result<_,String>>()?;
+    let index=resolve_output_port(&descriptions,wanted,port_id.as_deref())?;
+    let id=ports[index].id();
     if s.output_id.as_ref()==Some(&id) {return Ok(0);}
     if let Some(route)=s.route_ids.get(&id) {return Ok(*route);}
     if s.routes.len()>=16 {return Err("At most 16 script outputs".into());}
-    let connection=output.connect(&ports[0],"Tetorica Script").map_err(|e|e.to_string())?;
+    let connection=output.connect(&ports[index],"Tetorica Script").map_err(|e|e.to_string())?;
     s.next_route+=1; let route=s.next_route;
     s.routes.insert(route,Box::new(connection));s.route_ids.insert(id,route);
     Ok(route)
@@ -526,6 +532,15 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn assigned_port_never_falls_back_to_another_same_name_device() {
+        let ports=vec![Port{id:"a".into(),name:"Synth".into()},Port{id:"b".into(),name:"Synth".into()}];
+        assert!(resolve_output_port(&ports,"Synth",None).is_err());
+        assert_eq!(resolve_output_port(&ports,"Synth",Some("b")).unwrap(),1);
+        assert!(resolve_output_port(&ports,"Synth",Some("missing")).is_err());
+        assert!(resolve_output_port(&ports,"Renamed",Some("a")).is_err());
+        assert!(resolve_output_port(&[],"Synth",Some("a")).is_err());
     }
     #[test]
     fn multiple_outputs_owners_channels_and_stale_runs() {

@@ -1,3 +1,4 @@
+import {outputSlots} from './output-mappings.js';
 import {createOutputApi} from './midi-output.js';
 import {bindLoopContext} from './loop-context.js';
 import {createClockWait} from './clock-wait.js';
@@ -41,8 +42,8 @@ onmessage=async ({data})=>{
       await external.beat(Math.ceil(duration*24)/24);
     };
   }
-  const outputs=createOutputApi({request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
-  Object.assign(api,{midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
+  const outputs=createOutputApi({mappings:data.outputMappings,request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
+  Object.assign(api,{...outputSlots,midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{

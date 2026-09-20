@@ -1,3 +1,5 @@
+import {mergeExamples} from './example-migrations.js';
+import {mountOutputMappings} from './output-mappings.js';
 import {bundledExamples} from './example-files.js';
 import {mountSynthRack} from './synth-rack.js';
 import {mountKeyboard} from './keyboard-tab.js';
@@ -18,7 +20,7 @@ ui.installBottomTabHandlers();ui.setBottomTab('code');
 const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
 let files={...defaults};
 try{const stored=JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
-for(const [path,code] of Object.entries(bundledExamples))if(!Object.hasOwn(files,path))files[path]=code;
+files=mergeExamples(files,bundledExamples);
 if(!Object.hasOwn(files,'/lead.js')) files['/lead.js']=leadExample;
 files=withGuide(ensureEntry(files, leadExample));
 let runPath="/index.js";
@@ -100,13 +102,14 @@ async function start(){
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
-  current.postMessage({type:'run',code,bpm,runId,externalClock,path:target,files:{...files}});
+  current.postMessage({type:'run',code,bpm,runId,externalClock,path:target,files:{...files},outputMappings:outputMappings.snapshot()});
 }
 $('clockMode').onchange=()=>run(stop);
 $('applyButton').onclick=()=>run(async()=>{if(!worker)throw new Error('Press Run first');worker.postMessage({type:'update',code:runSource(files,runPath),path:runPath,files:{...files}});ui.setStatus('Applying '+runPath);});
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
-async function refresh(){const ports=await invoke('ports');for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
+async function refresh(){const ports=await invoke('ports');outputMappings.refresh(ports.output);for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
+const outputMappings=mountOutputMappings($('outputMappings'),{storage:localStorage,beforeChange:stop,onError:error=>{ui.logLine(String(error));ui.setStatus(String(error));}});
 $('refresh').onclick=()=>run(refresh);
 mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));},stop);
 let outputConnecting=false;

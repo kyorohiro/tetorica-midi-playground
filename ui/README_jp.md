@@ -209,7 +209,7 @@ liveLoop("piano", async () => {
 
 `midi.output()`は同期でハンドルを返し、最初の`play()`で接続します。同じポートの接続は共有します。外部ポートは表示名でも指定でき、不在・同名重複はエラーです。CHは1〜16（省略時1）で、ハンドル作成時に指定します。`play()`のdurationは拍単位で、Promiseは音の長さ分待って完了します。awaitは任意で、失敗はConsoleに表示してRunを停止します。追加のスクリプト接続は最大16ポート。MIDI画面に接続数を表示します。Keyboard・グローバルplayの選択先とは別です。
 
-現段階の`enableSoundChip()`はYM2612＋PSGの共有Rackを起動します。繰り返し呼んでも発音・設定はリセットしません。音源単位の有効化や`MIDI_OUTPUT_01`の割り当てUIは後続です。Stopは演奏とスクリプト接続を停止し、Rackは有効なまま残します。MIDI画面でEnableを切り替える場合は先に演奏を停止します。Keyboardで鳴らす際はMIDI画面で出力を選択してください。
+現段階の`enableSoundChip()`はYM2612＋PSGの共有Rackを起動します。繰り返し呼んでも発音・設定はリセットしません。音源単位の有効化は後続です。Stopは演奏とスクリプト接続を停止し、Rackは有効なまま残します。MIDI画面でEnableを切り替える場合は先に演奏を停止します。Keyboardで鳴らす際はMIDI画面で出力を選択してください。
 
 直接記述した引数なし・ブロック形式のliveLoopでは、同じコード内の`const piano = midi.output(...)`と`piano.play(...)`をループ所有者へ自動的に結び付けます。引数ありのコールバックやimportした関数では、ループ専用の`playOutput`を渡してください。
 
@@ -229,3 +229,16 @@ liveLoop("bass", async ({playOutput, beat}) => {
 倍率・デチューン（レジスター値）・TL・レートスケーリング・アタック／ディケイ／サステイン／リリースとサステインレベルを設定できます。TLは大きいほど小音量、倍率0は½です。ベロシティはアルゴリズムに応じた出力オペレーターのレベルへ作用します。同時発音6音は全CHで共有します。
 
 Applyは次のNote Onから反映し、発音中の音は変更しません。StopやRackの無効化→再有効化でもCH別設定を保持しますが、アプリ終了後は初期値へ戻ります。CH切替・Reloadで未Applyの編集は破棄します。音色ファイルの保存／読込、LFO・AM・PMS/AMS・SSG-EGは後続です。
+
+## MIDI出力の割り当て
+
+**MIDI connections → Script output assignments**で`MIDI_OUTPUT_01`〜`04`に内蔵音源または外部ポートを割り当てます。コードでは引用符なしの識別子を使います。
+
+```js
+const piano = midi.output(MIDI_OUTPUT_01, {channel: 1});
+const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
+```
+
+割り当てはローカル保存します。変更すると演奏が停止するので、再度Runしてください。Run開始時の割り当てをApplyでも使います。使わないスロットは未設定で構いません。未設定のスロットを使うとハンドル作成時にエラーになります。外部ポートはIDと名前で記録し、不在・改名時は再割り当てが必要です。同名の別機器には自動接続しません。初回play時にもNativeで接続先を確認します。内蔵音源はコードの`await enableSoundChip(...)`か手動Enableが必要です。
+
+`/examples/02_assigned_outputs.js`は内蔵音源を直接指定するので、そのままRunできます。MIDI画面で割り当て後、コメントの案内に沿って論理出力へ切り替えられます。CH省略時は1です。Keyboardとグローバルplayの出力選択は従来通りです。
