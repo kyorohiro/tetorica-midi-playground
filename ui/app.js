@@ -1,3 +1,4 @@
+import {mountKeyboard} from './keyboard-tab.js';
 import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
 import {keyData} from './keyboard.js';
 import {connectionStatus} from './connection.js';
@@ -8,7 +9,9 @@ import {createPlaygroundUi} from './shared/playground_ui.js';
 import {renderFileTree} from './shared/playground_file_tree.js';
 const invoke=window.__TAURI__.core.invoke;
 const $=id=>document.getElementById(id);
-const ui=createPlaygroundUi(Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel'].map(id=>[id,$(id)])));
+let auditionKeyboard=null;
+const ui=createPlaygroundUi({...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
+auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
 const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
 let files={...defaults};
@@ -56,7 +59,7 @@ function releaseKeys(){
 }
 keyboardPad.addEventListener('blur',releaseKeys);
 window.addEventListener('blur',releaseKeys);
-async function stop(){activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
+async function stop(){await auditionKeyboard?.releaseAll();activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
 async function start(){
   const target=runPath;
   const code=runSource(files,target);

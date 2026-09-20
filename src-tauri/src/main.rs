@@ -32,9 +32,12 @@ struct Session {
     notes: HashMap<(u8, u8), Instant>,
     note_owners: HashMap<(u8, u8), u64>,
     note_ticks: HashMap<(u8, u8), u64>,
+    audition: HashMap<(u8,u8),u64>,
 }
 impl Session {
     fn stop(&mut self) -> Result<(), String> {
+        let keys:Vec<_>=self.audition.keys().copied().collect();
+        for (channel,note) in keys {if let Some(out)=&mut self.output {out.send(&[0x80|channel,note,0])?;} self.audition.remove(&(channel,note));}
         if self.off.is_some() {
             if let Some(out) = &mut self.output {
                 out.send(&[0x80, 60, 0]).map_err(|e| e.to_string())?;
@@ -71,11 +74,13 @@ impl Session {
             return Err("Invalid note, channel, velocity or duration (1–10000 ms)".into());
         }
         let channel = channel - 1;
+        let was_audition=self.audition.contains_key(&(channel,note));
         let out = self.output.as_mut().ok_or("Connect an output first")?;
-        if self.notes.contains_key(&(channel, note)) {
+        if was_audition || self.notes.contains_key(&(channel, note)) {
             out.send(&[0x80 | channel, note, 0])?;
         }
         out.send(&[0x90 | channel, note, velocity])?;
+        self.audition.remove(&(channel,note));
         self.note_owners.remove(&(channel, note));
             self.note_ticks.remove(&(channel, note));
         self.notes.insert(
@@ -97,6 +102,20 @@ impl Session {
         if let Some(owner) = owner {
             self.note_owners.insert((channel - 1, note), owner);
         }
+        Ok(())
+    }
+    fn audition_on(&mut self, id:u64, note:u8, channel:u8, velocity:u8)->Result<(),String> {
+        if note>127 || !(1..=16).contains(&channel) || !(1..=127).contains(&velocity) {return Err("Invalid keyboard note".into());}
+        let key=(channel-1,note);
+        let out=self.output.as_mut().ok_or("Connect a MIDI output first")?;
+        if self.notes.contains_key(&key)||self.audition.contains_key(&key){out.send(&[0x80|key.0,note,0])?;}
+        out.send(&[0x90|key.0,note,velocity])?;
+        self.notes.remove(&key);self.note_ticks.remove(&key);self.note_owners.remove(&key);
+        self.audition.insert(key,id);Ok(())
+    }
+    fn audition_off(&mut self,id:u64)->Result<(),String>{
+        let keys:Vec<_>=self.audition.iter().filter(|(_,v)|**v==id).map(|(k,_)|*k).collect();
+        for key in keys {if let Some(out)=&mut self.output {out.send(&[0x80|key.0,key.1,0])?;}self.audition.remove(&key);}
         Ok(())
     }
     fn external_note(&mut self, run_id:u64, owner:Option<u64>, note:u8, channel:u8, velocity:u8, beats:f64) -> Result<(),String> {
@@ -281,6 +300,10 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
     Ok(())
 }
 #[tauri::command]
+fn keyboard_on(id:u64,note:u8,channel:u8,velocity:u8,state:tauri::State<AppState>)->Result<(),String>{state.session.lock().unwrap().audition_on(id,note,channel,velocity)}
+#[tauri::command]
+fn keyboard_off(id:u64,state:tauri::State<AppState>)->Result<(),String>{state.session.lock().unwrap().audition_off(id)}
+#[tauri::command]
 fn play_note(state: tauri::State<AppState>) -> Result<(), String> {
     state.session.lock().unwrap().note()
 }
@@ -423,6 +446,8 @@ fn main() {
     tauri::Builder::default()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            keyboard_on,
+            keyboard_off,
             begin_run,
             play_midi_note,
             release_loop_notes,
@@ -454,6 +479,17 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn keyboard_holds_polyphony_and_protects_retriggered_notes() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session{output:Some(Box::new(Fake(messages.clone()))),..Default::default()};
+        s.audition_on(1,60,1,90).unwrap();s.audition_on(2,64,1,90).unwrap();
+        s.expire(Instant::now()+Duration::from_secs(30)).unwrap();assert_eq!(s.audition.len(),2);
+        s.audition_on(3,60,1,90).unwrap();s.audition_off(1).unwrap();assert_eq!(s.audition.len(),2);
+        s.script_note(0,60,1,90,100).unwrap();s.audition_off(3).unwrap();assert_eq!(s.notes.len(),1);
+        s.stop().unwrap();assert!(s.audition.is_empty());assert!(s.notes.is_empty());
+        assert!(s.audition_on(4,128,1,90).is_err());
     }
     #[test]
     fn held_note_follows_tempo_changes_without_wall_clock_sleep() {

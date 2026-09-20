@@ -92,3 +92,9 @@ FM音色、PSG、DAC、サンプル、エフェクトは現在未搭載。
 - [x] 外部ノートの発音中テンポ変更・途絶・再発音の所有権をnativeの仮想時刻テストで検証。
 - [x] Applyで他ループのcycle/所有者が継続し、旧コールバックがawait後に発音しないことをWorkerテストで検証。
 - 自動検証: JS 47件、Rust 12件（CoreMIDI実機用1件は通常スキップ）。GUI→IPC→実音の通し確認は別。
+
+## Keyboardタブの試奏
+
+- [x] FM版の指板配置・楽器/フレット選択とPCキー割り当てを移植。MIDI outputへRun不要のNote On/Off。チャンネル/velocity指定、和音、pointer capture、タブ・blur・Stop時の解放。
+- [x] 非同期On/Off順序・重複押下・native保持/再発音/Stopを自動テスト。JS49件・Rust13件成功（実機用1件スキップ）。
+- [ ] Tauri実機で画面鍵盤・PCキーからの試奏とウィンドウ離脱時の音停止を確認。

@@ -151,3 +151,7 @@ GarageBandの再生ボタンやKeyboard input領域のクリックは、この�
 CoreMIDI自体の送受信は `npm run clock:send -- --self-test` で確認できる。これは専用仮想ポート内で完結する。
 
 これらは実際のTauri画面クリック→IPC→GarageBand発音までを丸ごと自動化したテストではない。手動はリリース時の接続・画面操作・実音の短い確認に絞り、タイミングや状態遷移の細かな組み合わせは自動テストに任せる。
+
+## コードなしの試奏
+
+GarageBandの音源を選び、TetoricaのMIDI outputを接続 → Keyboardタブ。画面のキーを押す、または表示されたPCキーを押すと発音、離すと停止。Run不要です。和音・チャンネル・velocityを試し、止めるときはRelease notesまたはStop。CodeタブのKeyboard inputとは別です。

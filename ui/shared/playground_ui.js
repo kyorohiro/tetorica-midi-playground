@@ -112,7 +112,7 @@ export function createPlaygroundUi(
       );
       if (tab.panel) {
         tab.panel.hidden =
-          !isSelected && !(tab.name === "keyboard" && tabName === "operator");
+          !isSelected;
       }
     }
   }

@@ -182,3 +182,9 @@ MIDI Stop, a repeated Start, or a one-second Clock gap ends the Run and releases
 Direct inline `liveLoop("lead", async () => { ... })` callbacks in the Run file now receive lexical play/beat/nextBeat/cycle bindings, isolated across awaits. Explicit callback parameters and top-level local declarations are preserved. Helper functions defined elsewhere, imported modules, aliases and expression-body callbacks should continue to receive scoped helpers explicitly. This is not general asynchronous context propagation.
 
 External `play` now schedules native Note Off by Clock pulse count: durations are rounded up to 1/24 beat, at most 128 beats. BPM/setBpm does not control external note length. A tempo change during a held note changes its remaining wall-clock length. The Worker wait starts after the MIDI acknowledgement; IPC and timer delays can make script continuation later than native Note Off. Stop, timeout and repeated Start still terminate the Run.
+
+## Keyboard tab: audition before coding
+
+Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel 1–16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
+
+Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input above the Code editor is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
