@@ -39,7 +39,7 @@ test('default index lead runs repeatedly through MIDI worker',async()=>{
 });
 async function runLoopScript(code){
  const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
- const logs=[],notes=[];
+ const logs=[],notes=[],releases=[];
  try{await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(new Error('Loop timeout')),3000);
   const fail=e=>{clearTimeout(timer);reject(e);};
@@ -48,10 +48,11 @@ async function runLoopScript(code){
    if(m.type==='ready')w.postMessage({type:'run',bpm:120,code});
    if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
    if(m.type==='log')logs.push(m.text);
+   if(m.type==='release')releases.push(m.owner);
    if(m.type==='error')fail(new Error(m.text));
    if(m.type==='done'){clearTimeout(timer);resolve();}
   });
- });return {logs,notes};}finally{await w.terminate();}
+ });return {logs,notes,releases};}finally{await w.terminate();}
 }
 test('scoped loops keep cycle slots separate across awaits and cancel waiting notes',async()=>{
  const result=await runLoopScript(`
@@ -96,4 +97,14 @@ test('music helpers are available in scripts and loop-local APIs',async()=>{
  `);
  assert.deepEqual(result.notes.map(x=>x.note),[64,67,71]);
  assert.deepEqual(result.logs,['5']);
+});
+
+test('stopping scoped loop requests release of the same generation that sent notes',async()=>{
+ const result=await runLoopScript(`
+ liveLoop('held',async({play})=>{await play('C4',{duration:10});});
+ await beat(0.02);stopLoop('held');await beat(0.02);
+ `);
+ assert.equal(result.notes.length,1);
+ assert.ok(Number.isInteger(result.notes[0].owner));
+ assert.deepEqual(result.releases,[result.notes[0].owner]);
 });

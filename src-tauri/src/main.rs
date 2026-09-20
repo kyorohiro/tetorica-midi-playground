@@ -27,6 +27,7 @@ struct Session {
     error: Option<String>,
     run_id: u64,
     notes: HashMap<(u8, u8), Instant>,
+    note_owners: HashMap<(u8, u8), u64>,
 }
 impl Session {
     fn stop(&mut self) -> Result<(), String> {
@@ -42,6 +43,7 @@ impl Session {
                 out.send(&[0x80 | channel, note, 0])?;
             }
             self.notes.remove(&(channel, note));
+            self.note_owners.remove(&(channel, note));
         }
         Ok(())
     }
@@ -69,10 +71,45 @@ impl Session {
             out.send(&[0x80 | channel, note, 0])?;
         }
         out.send(&[0x90 | channel, note, velocity])?;
+        self.note_owners.remove(&(channel, note));
         self.notes.insert(
             (channel, note),
             Instant::now() + Duration::from_millis(duration_ms),
         );
+        Ok(())
+    }
+    fn owned_note(
+        &mut self,
+        run_id: u64,
+        owner: Option<u64>,
+        note: u8,
+        channel: u8,
+        velocity: u8,
+        duration_ms: u64,
+    ) -> Result<(), String> {
+        self.script_note(run_id, note, channel, velocity, duration_ms)?;
+        if let Some(owner) = owner {
+            self.note_owners.insert((channel - 1, note), owner);
+        }
+        Ok(())
+    }
+    fn release_owner(&mut self, run_id: u64, owner: u64) -> Result<(), String> {
+        if run_id != self.run_id {
+            return Ok(());
+        }
+        let keys: Vec<_> = self
+            .note_owners
+            .iter()
+            .filter(|(_, id)| **id == owner)
+            .map(|(key, _)| *key)
+            .collect();
+        for (channel, note) in keys {
+            if let Some(out) = &mut self.output {
+                out.send(&[0x80 | channel, note, 0])?;
+            }
+            self.notes.remove(&(channel, note));
+            self.note_owners.remove(&(channel, note));
+        }
         Ok(())
     }
     fn expire(&mut self, now: Instant) -> Result<(), String> {
@@ -87,6 +124,7 @@ impl Session {
                 out.send(&[0x80 | channel, note, 0])?;
             }
             self.notes.remove(&(channel, note));
+            self.note_owners.remove(&(channel, note));
         }
         Ok(())
     }
@@ -247,6 +285,7 @@ fn begin_run(state: tauri::State<AppState>) -> Result<u64, String> {
 #[tauri::command]
 fn play_midi_note(
     run_id: u64,
+    owner: Option<u64>,
     note: u8,
     channel: u8,
     velocity: u8,
@@ -257,7 +296,15 @@ fn play_midi_note(
         .session
         .lock()
         .unwrap()
-        .script_note(run_id, note, channel, velocity, duration_ms)
+        .owned_note(run_id, owner, note, channel, velocity, duration_ms)
+}
+#[tauri::command]
+fn release_loop_notes(
+    run_id: u64,
+    owner: u64,
+    state: tauri::State<AppState>,
+) -> Result<(), String> {
+    state.session.lock().unwrap().release_owner(run_id, owner)
 }
 #[derive(Serialize)]
 struct Snapshot {
@@ -328,6 +375,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             begin_run,
             play_midi_note,
+            release_loop_notes,
             ports,
             connect_input,
             connect_output,
@@ -356,6 +404,46 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn owner_release_preserves_retriggered_notes_and_other_channels() {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let mut s = Session {
+            output: Some(Box::new(Fake(messages.clone()))),
+            run_id: 3,
+            ..Default::default()
+        };
+        s.owned_note(3, Some(1), 60, 1, 90, 10000).unwrap();
+        s.owned_note(3, Some(2), 60, 1, 90, 10000).unwrap();
+        s.owned_note(3, Some(1), 64, 2, 90, 10000).unwrap();
+        messages.lock().unwrap().clear();
+        s.release_owner(2, 1).unwrap();
+        assert_eq!(s.notes.len(), 2);
+        s.release_owner(3, 1).unwrap();
+        assert_eq!(*messages.lock().unwrap(), vec![vec![0x81, 64, 0]]);
+        assert!(s.notes.contains_key(&(0, 60)));
+        s.release_owner(3, 2).unwrap();
+        assert!(s.notes.is_empty());
+        assert!(s.note_owners.is_empty());
+        let count = messages.lock().unwrap().len();
+        s.expire(Instant::now() + Duration::from_secs(20)).unwrap();
+        assert_eq!(messages.lock().unwrap().len(), count);
+    }
+    #[test]
+    fn unowned_retrigger_and_expiry_clear_previous_owner() {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let mut s = Session {
+            output: Some(Box::new(Fake(messages))),
+            ..Default::default()
+        };
+        s.owned_note(0, Some(1), 60, 1, 90, 100).unwrap();
+        s.script_note(0, 60, 1, 90, 100).unwrap();
+        s.release_owner(0, 1).unwrap();
+        assert_eq!(s.notes.len(), 1);
+        s.owned_note(0, Some(2), 64, 1, 90, 100).unwrap();
+        s.expire(Instant::now() + Duration::from_secs(1)).unwrap();
+        assert!(s.note_owners.is_empty());
+        assert!(s.notes.is_empty());
     }
     #[test]
     fn retrigger_and_stop_release_note() {

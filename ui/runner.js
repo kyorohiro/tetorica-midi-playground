@@ -18,12 +18,15 @@ onmessage=async ({data})=>{
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
-  const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),createApi:check=>{
+  const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
     // Share the Run clock; keep cancellation and cycle state local to this loop.
     let slot=0;const cycles=new Map();
     const helpers={...api};
     for(const key of ['play','beat','nextBeat'])helpers[key]=async(...args)=>{
-      check();await api[key](...args);check();
+      check();
+      if(key==='play')await api.play(args[0],args[1],payload=>{check();return send({...payload,owner});});
+      else await api[key](...args);
+      check();
     };
     helpers.cycle=(keyOrValues,maybeValues)=>{
       check();const values=maybeValues===undefined?keyOrValues:maybeValues;

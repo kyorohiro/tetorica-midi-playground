@@ -47,13 +47,17 @@ async function start(){
   const current=new Worker('./runner.js',{type:'module'});worker=current;
   ui.setRuntimeState('Running');ui.setStatus(`Running ${target}`);
   let inFlight=0,logs=0;
+  let midiQueue=Promise.resolve();
+  const enqueueMidi=fn=>{const task=midiQueue.then(()=>{if(current!==worker||ticket!==epoch)return;return fn();});midiQueue=task.catch(()=>{});return task;};
   current.onmessage=async({data})=>{
     if(current!==worker||ticket!==epoch)return;
     if(data.type==='note'){
       if(++inFlight>64){await run(stop);ui.setStatus('Too many concurrent notes');return;}
-      try{await invoke('play_midi_note',{...data.payload,runId});current.postMessage({type:'reply',id:data.id});}
+      try{await enqueueMidi(()=>invoke('play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
       catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
       finally{inFlight--;}
+    }else if(data.type==='release'){
+      await run(()=>enqueueMidi(()=>invoke('release_loop_notes',{runId,owner:data.owner})));
     }else if(data.type==='log'){if(logs++<1000)ui.logLine(String(data.text).slice(0,4000));}
     else if(data.type==='error'){await run(stop);ui.logLine(data.text);ui.setStatus(data.text);ui.setBottomTab('console');}
     else if(data.type==='done'){ui.setRuntimeState('Finished');ui.setStatus('Finished. Press Stop to release any remaining notes.');}

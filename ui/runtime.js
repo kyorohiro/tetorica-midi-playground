@@ -31,11 +31,11 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     }
   }
   async function beat(count=1){await sleep(positive(count,'beat count',1024)*60000/bpm);}
-  async function play(note,{duration=0.5,channel=1,velocity=90}={}){
+  async function play(note,{duration=0.5,channel=1,velocity=90}={},sender=send){
     const durationMs=Math.round(positive(duration,'duration',128)*60000/bpm);
     if(durationMs<1||durationMs>10000)throw new Error('Note duration must be 1–10000 ms');
     if(!Number.isInteger(channel)||channel<1||channel>16||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid channel or velocity');
-    await send({note:noteNumber(note),channel,velocity,durationMs});
+    await sender({note:noteNumber(note),channel,velocity,durationMs});
     await sleep(durationMs);
   }
   const choose=values=>{if(!Array.isArray(values)||!values.length)throw new Error('choose needs a nonempty array');return values[Math.floor(random()*values.length)];};

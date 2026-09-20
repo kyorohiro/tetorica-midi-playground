@@ -115,7 +115,7 @@ liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
 // stopLoop("lead");
 // stopAllLoops();
 ```
-Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Already-sent notes finish their scheduled duration (up to 10 seconds); the Stop button releases all notes immediately. Legacy callbacks using global helpers stop only at the iteration boundary and retain shared cycle counters. Run still restarts everything.
+Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Stopping a scoped loop releases its owned notes immediately through MIDI. If another loop retriggers the same channel/note, the latest sender owns it; stopping the old loop does not cut off that note. Global play calls have no loop owner. The Stop button releases all notes. Legacy callbacks using global helpers stop only at the iteration boundary and retain shared cycle counters. Run still restarts everything.
 
 ## Music helpers
 
