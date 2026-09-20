@@ -29,3 +29,22 @@ test('tempo changes preserve beat phase and affect a pending nextBeat',async()=>
  const before=time;assert.throws(()=>api.setBpm(0));
  await api.nextBeat();assert.ok(Math.abs(time-before-1000)<0.001);
 });
+test('chord spelling matches FM chord types and enforces MIDI range',()=>{
+ const api=createMidiHelpers({send:async()=>{},sleep:async()=>{},log:()=>{}});
+ const expected={major:['C4','E4','G4'],minor:['C4','D#4','G4'],major7:['C4','E4','G4','B4'],minor7:['C4','D#4','G4','A#4'],dominant7:['C4','E4','G4','A#4']};
+ for(const [name,notes] of Object.entries(expected))assert.deepEqual(api.chord('C4',name),notes);
+ assert.deepEqual(api.chord('Bb3','major'),['A#3','D4','F4']);
+ assert.throws(()=>api.chord('C4','unknown'));
+ assert.throws(()=>api.chord('G9','major'));
+});
+test('random helpers cover endpoints, numeric coercion and interpolation',()=>{
+ let value=0;
+ const api=createMidiHelpers({send:async()=>{},sleep:async()=>{},log:()=>{},random:()=>value});
+ assert.equal(api.rand(),0);assert.equal(api.randInt(2,5),2);
+ value=0.999999;assert.equal(api.randInt(2,5),5);
+ value=0.5;assert.equal(api.rrange('2','6'),4);assert.equal(api.rrange(6,2),4);
+ assert.equal(api.randInt(2.2,3.8),3);
+ assert.equal(api.lerp('2','6',0.25),3);assert.equal(api.lerp(2,6,2),10);
+ for(const [min,max] of [[4,2],[2.2,2.8],[NaN,2],[0,Infinity]])assert.throws(()=>api.randInt(min,max));
+ assert.throws(()=>api.lerp(0,1,NaN));
+});

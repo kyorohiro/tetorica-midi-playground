@@ -116,3 +116,18 @@ liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
 // stopAllLoops();
 ```
 Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Already-sent notes finish their scheduled duration (up to 10 seconds); the Stop button releases all notes immediately. Legacy callbacks using global helpers stop only at the iteration boundary and retain shared cycle counters. Run still restarts everything.
+
+## Music helpers
+
+```js
+for (const note of chord("E4", "minor7")) {
+  await play(note, {duration: 0.25, velocity: randInt(70, 100)});
+}
+```
+
+- `chord(root, name)`: major, minor, major7, minor7, dominant7.
+- `rand()`: 0 <= value < 1.
+- `rrange(min, max)`: random interpolation between two values.
+- `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
+- `lerp(a, b, t)`: linear interpolation; t is not clamped.
+`chord` returns note names, not automatic simultaneous playback. Generated notes must fit MIDI 0–127. Invalid numeric ranges/values throw. These helpers also appear in loop callback arguments. `noteLerp` is not yet supported: the FM version returns synth-specific pitch data. Unlike the FM version (seconds, channel 0-based), MIDI `play` uses duration in beats and channels 1–16.

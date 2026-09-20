@@ -7,7 +7,12 @@ export function noteNumber(value) {
   if (n<0 || n>127) throw new Error('Note outside MIDI range');
   return n;
 }
-export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()=>performance.now()}) {
+function noteName(midi) {
+  noteNumber(midi);
+  return ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi%12]+(Math.floor(midi/12)-1);
+}
+
+export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()=>performance.now(), random=()=>Math.random()}) {
   let bpm=initialBpm;
   let anchorTime=now(), anchorBeat=0;
   const currentBeat=()=>anchorBeat+(now()-anchorTime)*bpm/60000;
@@ -33,7 +38,7 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     await send({note:noteNumber(note),channel,velocity,durationMs});
     await sleep(durationMs);
   }
-  const choose=values=>{if(!Array.isArray(values)||!values.length)throw new Error('choose needs a nonempty array');return values[Math.floor(Math.random()*values.length)];};
+  const choose=values=>{if(!Array.isArray(values)||!values.length)throw new Error('choose needs a nonempty array');return values[Math.floor(random()*values.length)];};
   const cycles=new Map();
   function cycle(keyOrValues, maybeValues) {
     const values=maybeValues === undefined ? keyOrValues : maybeValues;
@@ -50,9 +55,24 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     const base=noteNumber(root), notes=[];
     for(let octave=0;octave<octaves;octave++)for(const interval of intervals){
       const midi=noteNumber(base+octave*12+interval);
-      notes.push(['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi%12]+(Math.floor(midi/12)-1));
+      notes.push(noteName(midi));
     }
     return notes;
   }
-  return {play,beat,nextBeat,setBpm,choose,cycle,scale,log};
+  function chord(root,name) {
+    const intervals={major:[0,4,7],minor:[0,3,7],major7:[0,4,7,11],minor7:[0,3,7,10],dominant7:[0,4,7,10]}[name];
+    if(!Array.isArray(intervals))throw new Error(`Unsupported chord: ${name}`);
+    const base=noteNumber(root);
+    return intervals.map(interval=>noteName(base+interval));
+  }
+  const finite=value=>{const n=Number(value);if(!Number.isFinite(n))throw new Error('Expected a finite number');return n;};
+  const rand=()=>random();
+  const rrange=(min,max)=>{const low=finite(min),high=finite(max);return low+random()*(high-low);};
+  function randInt(min,max){
+    const low=Math.ceil(finite(min)),high=Math.floor(finite(max));
+    if(!Number.isSafeInteger(low)||!Number.isSafeInteger(high)||high<low||!Number.isSafeInteger(high-low+1))throw new Error('Invalid integer range');
+    return Math.floor(random()*(high-low+1))+low;
+  }
+  const lerp=(a,b,t)=>{const low=finite(a),high=finite(b);return low+(high-low)*finite(t);};
+  return {play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,log};
 }

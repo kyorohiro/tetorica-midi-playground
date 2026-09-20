@@ -83,3 +83,17 @@ test('same-name replacement cancels old scoped callback and all loops stop',asyn
  `);
  assert.deepEqual(result.notes.map(x=>x.note),[64]);
 });
+test('music helpers are available in scripts and loop-local APIs',async()=>{
+ const result=await runLoopScript(`
+ log(lerp(0,10,0.5));
+ if(rand()<0||rand()>=1)throw new Error('rand bounds');
+ if(rrange(2,2)!==2)throw new Error('rrange');
+ liveLoop('chords',async({play,chord,randInt})=>{
+   for(const note of chord('E4','minor'))await play(note,{duration:0.002,velocity:randInt(90,90)});
+   stopLoop('chords');
+ });
+ await beat(0.1);
+ `);
+ assert.deepEqual(result.notes.map(x=>x.note),[64,67,71]);
+ assert.deepEqual(result.logs,['5']);
+});

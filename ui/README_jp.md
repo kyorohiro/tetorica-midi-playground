@@ -115,3 +115,18 @@ liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
 // stopAllLoops();
 ```
 コールバック引数のヘルパーを使うと、cycleのカウンターがループごと・呼び出し順ごとに分かれ、await後の停止も有効になります。名前付きcycleもループ内で独立します。同名ループの置換はカウンターをリセットし、旧ループの専用ヘルパーを停止します。送信済みノートは指定時間（最大10秒）でNote Offになります。画面のStopは全ノートを即時解放します。引数を使わずグローバルヘルパーを呼ぶ従来コードは反復の境界で停止し、cycleは共有のままです。Runで全再起動する仕様は変わりません。
+
+## Music helpers
+
+```js
+for (const note of chord("E4", "minor7")) {
+  await play(note, {duration: 0.25, velocity: randInt(70, 100)});
+}
+```
+
+- `chord(root, name)`: major, minor, major7, minor7, dominant7.
+- `rand()`: 0 <= value < 1.
+- `rrange(min, max)`: random interpolation between two values.
+- `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
+- `lerp(a, b, t)`: linear interpolation; t is not clamped.
+`chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp`はFM版が音源固有のピッチ情報を返すため未対応です。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・1〜16のチャンネルです。
