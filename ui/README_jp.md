@@ -7,46 +7,37 @@ TetoricaはMIDI（演奏指示）を送り、GarageBandが音を鳴らします�
 
 ## 必要なもの
 
-- Apple SiliconのMac（今回の配布版）
+- Macと、そのCPUに合った配布版アプリ
 - GarageBand
 - Tetorica MIDI Playgroundアプリ
 
 配布されたアプリを使う場合、Node.jsやRustは不要です。
 
-## 1. macの仮想MIDIバスを作る
+## 1. GarageBandを準備する
 
-「Audio MIDI設定」を開きます。見つからなければSpotlightで
-「Audio MIDI」と検索するか、ターミナルで次を実行します。
+1. GarageBandで「空のプロジェクト」を作成。
+2. 「ソフトウェア音源」トラックを追加してピアノなどを選択。
+3. そのトラックを選択したままにします。再生・録音ボタンは不要です。
 
-    open -a "Audio MIDI Setup"
+## 2. MIDI出力を選ぶ
 
-1. 「ウインドウ」→「MIDIスタジオを表示」。
-2. 「IACドライバ」をダブルクリック。
-3. 「装置はオンライン」にチェック。
-4. ポート一覧の＋でバスを追加し「Tetorica Notes」と命名。
+1. Tetoricaの **MIDI settings** を開いて **Refresh ports**。
+2. **Choose MIDI output** にGarageBandの仮想入力があれば選択。
+3. 選択すると自動接続します。緑色の接続表示と接続先名を確認してください。
 
-この名前は自分で付けます。TetoricaやGarageBandという名前が
-自動で現れるわけではありません。発音の確認にはバス1つで十分です。
+Clock inputは任意です。スクリプトで音を鳴らすだけなら不要です。
 
-## 2. GarageBandを準備する
+## 3. テスト音を鳴らす
 
-1. 「空のプロジェクト」を作成。
-2. 「ソフトウェア音源」のトラックを作成。
-3. ピアノなどの音色を選択。
-4. そのトラックを選択したままにします。
+**Test sound — Play C4** を押すと、ノート60をチャンネル1で250ms送ります。
+接続表示は発音を保証するものではありません。GarageBandの音源トラックを選択してください。
 
-再生・録音ボタンを押す必要はありません。
+### 別の方法: IACバス
 
-## 3. Tetoricaからテスト音を送る
-
-1. 右上の「MIDI settings」を押す。
-2. 「Refresh ports」を押す。
-3. 「Note output」で「Tetorica Notes」を含むポートを選択。
-4. 「Connect output」を押す。
-5. 「Play C4 (250 ms)」を押す。
-
-短い音が鳴れば接続成功！ ノート番号60、チャンネル1を送ります。
-この段階ではClock inputの接続は不要です。
+GarageBandの仮想入力が出ない場合はIACバスも使えます。
+「Audio MIDI設定」→「ウインドウ」→「MIDIスタジオを表示」→「IACドライバ」で
+「装置はオンライン」を有効にし、「Tetorica Notes」というバスを追加して出力先に選びます。
+GarageBandの仮想入力がある場合、この設定は不要です。
 
 ## 4. JavaScriptで演奏する
 
@@ -77,8 +68,8 @@ TetoricaはMIDI（演奏指示）を送り、GarageBandが音を鳴らします�
 
 ## 音が鳴らないとき
 
-- IACの「装置はオンライン」を確認してRefresh ports。
-- 出力を選択した後、Connect outputを押したか確認。
+- GarageBandを開いてからRefresh ports。IACを使う場合は「装置はオンライン」を確認。
+- 接続表示と接続先を確認。再試行はReconnect output。
 - GarageBandのソフトウェア音源トラックを選択。
 - トラックのミュート・音量・macのスピーカー出力を確認。
 - IAC準備前にGarageBandを開いていたら、GarageBandを再起動。
@@ -130,3 +121,25 @@ for (const note of chord("E4", "minor7")) {
 - `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
 - `lerp(a, b, t)`: linear interpolation; t is not clamped.
 `chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp(from, to, t)` は音名またはMIDI番号を補間し、playに渡せる整数MIDI番号を返します。最寄りの半音へ丸め、中間値は上の音になります。tは制限せず、補間結果が音域外なら丸める前にエラーにします。FM版のピッチオブジェクトとは異なり、Pitch Bendは送りません。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・1〜16のチャンネルです。
+
+## FM / MIDI API differences
+
+| API | MIDI Playground |
+| --- | --- |
+| `play` | duration in beats (default 0.5), channel 1–16 (default 1), velocity 1–127 (default 90) |
+| `beat(count = 1)` | 0 < count <= 1024; global: captures BPM; loop-local: follows BPM changes |
+| `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
+| `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
+
+FM版playは秒（既定0.2）・0始まりのチャンネルです。MIDI版playは拍数をミリ秒へ丸め、1〜10000msかつ128拍以下に制限します。送信失敗はエラーになります。待機中のplayとグローバルbeatはBPM変更後も元の待ち時間を使います。専用beat/nextBeatはループごとの拍位置を管理し、待機中のBPM変更も反映します。ループの拍位置と現在の拍の遅い方を基準に進み、過ぎた拍をまとめて再実行しません。タイマー遅延は起こり得るためサンプル精度は保証しません。scaleは音名に加えて整数MIDI番号のrootも受け付け、octavesの整数制限はFM版より厳格です。完全互換ではありません。
+
+## Keyboard input
+
+```js
+onKeyboardPressKey("piano", async (event) => {
+  const notes = {KeyA: "C4", KeyS: "E4", KeyD: "G4"};
+  if (notes[event.code]) await play(notes[event.code], {duration: 0.25});
+});
+onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
+```
+Run後、エディター上の **Keyboard input** をクリックしてA/S/Dを押してください。この領域にフォーカスがあるときだけ送信するため、編集中の文字入力では発音しません。Tab/EscapeとCtrl/Alt/Command付き操作は対象外です。フォーカスを失うと送信済みの押下キーのreleaseを送ります。eventにはkey/code/type/repeatと修飾キー情報が入り、DOMメソッドはありません。キーリピートは無視し、非同期コールバックの実行中はそのハンドラーへの新規イベントをスキップします。同種の同名ハンドラーは置換、最大32個です。StopでWorkerと登録を破棄し、Runで新規開始します。発音はduration指定で、押している間だけ伸ばす仕様ではありません。

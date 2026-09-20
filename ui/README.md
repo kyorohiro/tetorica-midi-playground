@@ -7,46 +7,38 @@ Tetorica sends MIDI performance messages; GarageBand produces the audio.
 
 ## What you need
 
-- An Apple Silicon Mac (for this release)
+- A Mac and the app build matching its architecture
 - GarageBand
 - The Tetorica MIDI Playground app
 
 The packaged app does not require Node.js or Rust.
 
-## 1. Create a virtual MIDI bus on your Mac
+## 1. Prepare GarageBand
 
-Open Audio MIDI Setup. If you cannot find it, search for “Audio MIDI” in
-Spotlight, or run this command in Terminal:
+1. Open GarageBand and create an Empty Project.
+2. Add a Software Instrument track and select a sound such as a piano.
+3. Keep that track selected. You do not need to press Play or Record.
 
-    open -a "Audio MIDI Setup"
+## 2. Choose a MIDI output
 
-1. Choose Window → Show MIDI Studio.
-2. Double-click IAC Driver.
-3. Enable “Device is online”.
-4. Use + in the port list to add a bus named “Tetorica Notes”.
+1. Open Tetorica's **MIDI settings** and click **Refresh ports**.
+2. In **Choose MIDI output**, select GarageBand's virtual input if it appears.
+3. Selection connects automatically. Check the green connection label and destination name.
 
-You create this name yourself. Apps named Tetorica or GarageBand do not
-appear here automatically. One bus is enough for this sound test.
+Clock input is optional and is not needed to play scripts.
 
-## 2. Prepare GarageBand
+## 3. Test sound
 
-1. Create an Empty Project.
-2. Add a Software Instrument track.
-3. Choose a sound, such as a piano.
-4. Keep that instrument track selected.
+Click **Test sound — Play C4**. This sends note 60 on channel 1 for 250 ms.
+A connected port does not guarantee sound: GarageBand must have an instrument track selected.
 
-You do not need to press Play or Record in GarageBand.
+### Alternative: IAC bus
 
-## 3. Send a test note from Tetorica
-
-1. Open “MIDI settings” at the top right.
-2. Click “Refresh ports”.
-3. Under “Note output”, select the port containing “Tetorica Notes”.
-4. Click “Connect output”.
-5. Click “Play C4 (250 ms)”.
-
-If you hear a short note, the connection works! The test sends MIDI note 60
-on channel 1. You do not need to connect Clock input for this test.
+If GarageBand's virtual input is unavailable, you can use an IAC bus.
+Open Audio MIDI Setup → Window → Show MIDI Studio → IAC Driver.
+Enable **Device is online**, add a bus named **Tetorica Notes**, then select
+that bus as Tetorica's output. Audio MIDI Setup is unnecessary when the
+GarageBand virtual input is available.
 
 ## 4. Play with JavaScript
 
@@ -77,8 +69,8 @@ Use “Import” to add a JavaScript file. Imported files do not run automatical
 
 ## If you hear nothing
 
-- Check “Device is online” in IAC Driver, then click Refresh ports.
-- After selecting an output, make sure you clicked Connect output.
+- Open GarageBand first, then click Refresh ports. If using IAC, check “Device is online”.
+- Check the connection label and destination. Use Reconnect output to retry.
 - Select the Software Instrument track in GarageBand.
 - Check track mute, volume, and your Mac's audio output device.
 - If GarageBand was open before you set up IAC, restart GarageBand.
@@ -131,3 +123,25 @@ for (const note of chord("E4", "minor7")) {
 - `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
 - `lerp(a, b, t)`: linear interpolation; t is not clamped.
 `chord` returns note names, not automatic simultaneous playback. Generated notes must fit MIDI 0–127. Invalid numeric ranges/values throw. These helpers also appear in loop callback arguments. `noteLerp(from, to, t)` returns the nearest integer MIDI note, ready for `play`. It accepts note names or MIDI numbers. Halfway values round upward; t is not clamped, but out-of-range results throw before rounding. This differs from the FM pitch-object return value and does not send Pitch Bend. Unlike the FM version (seconds, channel 0-based), MIDI `play` uses duration in beats and channels 1–16.
+
+## FM / MIDI API differences
+
+| API | MIDI Playground |
+| --- | --- |
+| `play` | duration in beats (default 0.5), channel 1–16 (default 1), velocity 1–127 (default 90) |
+| `beat(count = 1)` | 0 < count <= 1024; global: captures BPM; loop-local: follows BPM changes |
+| `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
+| `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
+
+FM `play` uses seconds (default 0.2) and zero-based channels. MIDI play converts to rounded milliseconds and accepts 1–10000 ms, with duration <=128 beats. Sending failure rejects the call. Pending play and global beat waits keep their original duration after a BPM change. Scoped beat/nextBeat use a per-loop beat cursor and follow tempo changes while waiting. Each wait starts from the later of the loop cursor and current beat; missed beats are not replayed. Timer lateness is still possible; no sample-accurate timing is guaranteed. MIDI scale accepts integer MIDI roots as well as note names and validates octave counts more strictly than FM. These are compatibility differences, not full API parity.
+
+## Keyboard input
+
+```js
+onKeyboardPressKey("piano", async (event) => {
+  const notes = {KeyA: "C4", KeyS: "E4", KeyD: "G4"};
+  if (notes[event.code]) await play(notes[event.code], {duration: 0.25});
+});
+onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
+```
+Press Run, click **Keyboard input** above the editor, then press A/S/D. Only this focused area forwards keys; typing in the editor does not play notes. Tab/Escape and Ctrl/Alt/Command shortcuts are excluded. Losing focus sends releases for forwarded held keys. Events contain key/code/type/repeat and modifier flags, not DOM methods. Repeated keydown events are ignored. A handler skips new events while its async callback is busy. Names replace handlers of the same event type; at most 32 handlers. Stop terminates the Worker and registrations; Run starts fresh. These callbacks play duration-based notes, not hold-to-sustain notes.

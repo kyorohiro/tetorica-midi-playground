@@ -12,3 +12,5 @@
 #outputStatus{font-weight:bold;overflow-wrap:anywhere}
 #outputStatus[data-state="connected"]{color:#175b36}
 #outputStatus[data-state="disconnected"]{color:#774800}
+
+#keyboardInput{padding:8px 12px;margin-bottom:8px;border:1px dashed var(--line);border-radius:6px;cursor:pointer}#keyboardInput:focus{outline:2px solid var(--accent);background:#d8eee1}

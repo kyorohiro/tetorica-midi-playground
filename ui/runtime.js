@@ -22,13 +22,28 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     anchorBeat=currentBeat();anchorTime=now();bpm=next;
   }
   positive(bpm,'BPM',999);
-  async function nextBeat(){
-    const target=Math.floor(currentBeat()+0.000001)+1;
+  async function waitForBeat(target,check=()=>{}){
     for(;;){
+      check();
       const remaining=target-currentBeat();
       if(remaining<=0.000001)return;
       await sleep(Math.min(25,remaining*60000/bpm));
     }
+  }
+  async function nextBeat(){await waitForBeat(Math.floor(currentBeat()+0.000001)+1);}
+  function createLoopTiming(check){
+    let cursor=currentBeat();
+    return {
+      async beat(count=1){
+        check();positive(count,'beat count',1024);
+        cursor=Math.max(cursor,currentBeat())+count;
+        await waitForBeat(cursor,check);
+      },
+      async nextBeat(){
+        check();cursor=Math.floor(Math.max(cursor,currentBeat())+0.000001)+1;
+        await waitForBeat(cursor,check);
+      }
+    };
   }
   async function beat(count=1){await sleep(positive(count,'beat count',1024)*60000/bpm);}
   async function play(note,{duration=0.5,channel=1,velocity=90}={},sender=send){
@@ -49,7 +64,7 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     return values[index%values.length];
   }
   function scale(root,name,octaves=1) {
-    const intervals={majorPentatonic:[0,2,4,7,9],minorPentatonic:[0,3,5,7,10],major:[0,2,4,5,7,9,11]}[name];
+    const intervals={majorPentatonic:[0,2,4,7,9],minorPentatonic:[0,3,5,7,10],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10]}[name];
     if(!Array.isArray(intervals))throw new Error(`Unknown scale: ${name}`);
     if(!Number.isInteger(octaves)||octaves<1||octaves>11)throw new Error('Invalid octave count');
     const base=noteNumber(root), notes=[];
@@ -79,5 +94,8 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     if(!Number.isFinite(midi)||midi<0||midi>127)throw new Error('Interpolated note outside MIDI range');
     return Math.round(midi);
   }
-  return {play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,noteLerp,log};
+  const api={play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,noteLerp,log};
+  // Internal factory; do not inject it as a global in user scripts.
+  Object.defineProperty(api,'createLoopTiming',{value:createLoopTiming});
+  return api;
 }

@@ -64,3 +64,66 @@ test('noteLerp rounds to playable MIDI notes and checks range before rounding',a
  await api.play(api.noteLerp('C4','C5',0.5),{duration:0.1});
  assert.equal(sent[0].note,66);
 });
+test('beat captures tempo at call time; later waits use the new tempo',async()=>{
+ const pending=[];
+ const api=createMidiHelpers({send:async()=>{},sleep:ms=>new Promise(resolve=>pending.push({ms,resolve})),log:()=>{}});
+ const first=api.beat();assert.equal(pending[0].ms,500);
+ api.setBpm(60);assert.equal(pending[0].ms,500);
+ pending[0].resolve();await first;
+ const second=api.beat(0.5);assert.equal(pending[1].ms,500);pending[1].resolve();await second;
+ for(const count of [0,-1,NaN,Infinity,1025,'1'])await assert.rejects(api.beat(count));
+ assert.equal(pending.length,2);
+});
+test('play validates before sending and enforces rounded millisecond duration limits',async()=>{
+ const sent=[],waits=[];
+ const api=createMidiHelpers({send:async p=>sent.push(p),sleep:async ms=>waits.push(ms),log:()=>{}});
+ await api.play(0,{duration:0.002,channel:16,velocity:1});
+ await api.play(127,{duration:20,channel:1,velocity:127});
+ assert.deepEqual(waits,[1,10000]);
+ for(const opts of [{duration:0.0001},{duration:20.01},{duration:129},{duration:'1'},{channel:1.5},{channel:17},{velocity:0},{velocity:1.5}])await assert.rejects(api.play(60,opts));
+ assert.equal(sent.length,2);
+ const failed=createMidiHelpers({send:async()=>{throw new Error('disconnected');},sleep:async()=>assert.fail('must not sleep after send failure'),log:()=>{}});
+ await assert.rejects(failed.play('C4'),/disconnected/);
+});
+test('all scale types, octave boundaries and invalid counts are explicit',()=>{
+ const api=createMidiHelpers({send:async()=>{},sleep:async()=>{},log:()=>{}});
+ const intervals={majorPentatonic:[0,2,4,7,9],minorPentatonic:[0,3,5,7,10],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10]};
+ for(const [name,steps] of Object.entries(intervals)){
+  assert.deepEqual(api.scale('C4',name,2).map(noteNumber),[...steps.map(n=>60+n),...steps.map(n=>72+n)]);
+ }
+ assert.equal(api.scale('C-1','major')[0],'C-1');
+ for(const count of [0,-1,1.5,12,NaN,Infinity,'2'])assert.throws(()=>api.scale('C4','major',count));
+ assert.throws(()=>api.scale('G9','major'));
+ assert.throws(()=>api.scale('C4','toString'));
+});
+test('loop beat follows tempo changes and cancellation unlike global beat',async()=>{
+ let time=0,changed=false,stopped=false;
+ const api=createMidiHelpers({now:()=>time,send:async()=>{},log:()=>{},sleep:async ms=>{
+  time+=ms;if(!changed){changed=true;api.setBpm(60);}
+ }});
+ const loop=api.createLoopTiming(()=>{if(stopped)throw new Error('stopped');});
+ await loop.beat(1);
+ assert.ok(Math.abs(time-975)<0.001);
+ stopped=true;await assert.rejects(loop.nextBeat(),/stopped/);
+ await assert.rejects(loop.beat(),/stopped/);
+ assert.ok(!Object.keys(api).includes('createLoopTiming'));
+});
+test('concurrent loop cursors are independent and share beat boundaries',async()=>{
+ let time=0;let waits=[];
+ const api=createMidiHelpers({now:()=>time,send:async()=>{},log:()=>{},sleep:ms=>new Promise(resolve=>waits.push(resolve))});
+ const a=api.createLoopTiming(()=>{}), b=api.createLoopTiming(()=>{});
+ let aDone=false,bDone=false;
+ const pa=a.beat(2).then(()=>aDone=true),pb=b.nextBeat().then(()=>bDone=true);
+ async function advance(to){time=to;const ready=waits;waits=[];ready.forEach(resolve=>resolve());for(let i=0;i<8;i++)await Promise.resolve();}
+ await advance(500);assert.equal(aDone,false);assert.equal(bDone,true);
+ await advance(1000);await Promise.all([pa,pb]);assert.equal(aDone,true);
+ // A late continuation moves from current time, without replaying missed beats.
+ const pc=b.nextBeat();await advance(1500);await pc;
+});
+test('stopping during a loop timing wait rejects at the next wake',async()=>{
+ let time=0,stopped=false;
+ const api=createMidiHelpers({now:()=>time,send:async()=>{},log:()=>{},sleep:async ms=>{time+=ms;stopped=true;}});
+ const loop=api.createLoopTiming(()=>{if(stopped)throw new Error('cancelled');});
+ await assert.rejects(loop.beat(100),/cancelled/);
+ assert.equal(time,25);
+});

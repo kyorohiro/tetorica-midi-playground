@@ -119,3 +119,28 @@ test('noteLerp is playable through scoped worker helpers',async()=>{
  `);
  assert.deepEqual(result.notes.map(x=>x.note),[70]);
 });
+test('keyboard callbacks execute in worker and send MIDI',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Keyboard timeout')),3000);
+  const fail=e=>{clearTimeout(timer);reject(e);};
+  w.on('error',fail);
+  let played=false;
+  w.on('message',m=>{
+   try{
+    if(m.type==='ready')w.postMessage({type:'run',bpm:120,code:`
+      onKeyboardPressKey('notes',async e=>{if(e.code==='KeyA')await play('C4',{duration:0.002});});
+      onKeyboardReleaseKey('notes',e=>log('released',e.code));
+    `});
+    if(m.type==='listening')w.postMessage({type:'keyboard',event:{type:'keydown',code:'KeyA',key:'a'}});
+    if(m.type==='note'){
+     assert.equal(m.payload.note,60);played=true;
+     w.postMessage({type:'reply',id:m.id});
+     w.postMessage({type:'keyboard',event:{type:'keyup',code:'KeyA',key:'a'}});
+    }
+    if(m.type==='error')throw new Error(m.text);
+    if(m.type==='log'){assert.equal(m.text,'released KeyA');assert.ok(played);clearTimeout(timer);resolve();}
+   }catch(e){fail(e);}
+  });
+ });}finally{await w.terminate();}
+});

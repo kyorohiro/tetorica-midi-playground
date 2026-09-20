@@ -30,7 +30,7 @@ liveLoop("melody", async () => {
 of Worker timers. Each Run restarts loops; live replacement semantics from the FM
 runtime are not yet implemented. Stop terminates the Worker and releases tracked
 notes. Native run IDs reject late requests from an earlier run. Files persist in
-app local storage; Export JS provides a separate backup. Imports never auto-run.
+app local storage; Export file provides a separate backup. Imports never auto-run.
 Scripts are trusted code running in a Worker, not a complete security sandbox.
 
 Audio, FM presets/effects, module imports, SPP/seek, predictive scheduling,
@@ -55,13 +55,20 @@ npm run build -- --debug
 # src-tauri/target/debug/tetorica-midi-playground
 ```
 
-### Connect a DAW
+### Play GarageBand instruments
+
+Open GarageBand, select a Software Instrument track, then choose its virtual
+input in Tetorica's MIDI output list when available. Selection connects
+automatically. Test C4, then Run. IAC setup and Clock input are not required for
+this route. See the in-app English/Japanese guides for the optional IAC route.
+
+### Optional DAW Clock test
 
 1. In Audio MIDI Setup, open MIDI Studio, enable IAC Driver, and create two
    buses: `DAW Clock` and `Tetorica Notes`.
 2. Configure the DAW to send MIDI Clock and transport to `DAW Clock`.
    Select that bus as the app's Clock input and click **Connect input**.
-3. Select `Tetorica Notes` as Note output and click **Connect output**.
+3. Select `Tetorica Notes` as MIDI output (connects automatically).
    Route that bus to a MIDI instrument track in the DAW. Enable monitoring.
 4. Click **Play C4** and check that the DAW receives note 60, then Note Off.
    Octave labels vary between DAWs; note number 60 is the reference.

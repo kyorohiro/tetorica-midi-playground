@@ -1,3 +1,4 @@
+import {keyData} from './keyboard.js';
 import {connectionStatus} from './connection.js';
 import {leadExample} from './examples.js';
 import {ensureEntry,runSource} from './project.js';
@@ -37,7 +38,23 @@ function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);
 $('clearConsole').onclick=()=>ui.clearConsole();
 async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLine(String(e));}}
 let worker=null,epoch=0;
-async function stop(){++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
+const pressedKeys=new Map();
+const keyboardPad=$('keyboardInput');
+for(const type of ['keydown','keyup'])keyboardPad.addEventListener(type,event=>{
+  if(event.metaKey||event.ctrlKey||event.altKey||event.key==='Tab'||event.key==='Escape')return;
+  if(!worker||event.repeat)return;
+  const data=keyData(event);
+  if(type==='keydown')pressedKeys.set(event.code,data);
+  else {if(!pressedKeys.has(event.code))return;pressedKeys.delete(event.code);}
+  event.preventDefault();worker.postMessage({type:'keyboard',event:data});
+});
+function releaseKeys(){
+  for(const data of pressedKeys.values())worker?.postMessage({type:'keyboard',event:{...data,type:'keyup',repeat:false}});
+  pressedKeys.clear();
+}
+keyboardPad.addEventListener('blur',releaseKeys);
+window.addEventListener('blur',releaseKeys);
+async function stop(){pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');}
 async function start(){
   const target=runPath;
   const code=runSource(files,target);
@@ -61,6 +78,7 @@ async function start(){
     }else if(data.type==='log'){if(logs++<1000)ui.logLine(String(data.text).slice(0,4000));}
     else if(data.type==='error'){await run(stop);ui.logLine(data.text);ui.setStatus(data.text);ui.setBottomTab('console');}
     else if(data.type==='done'){ui.setRuntimeState('Finished');ui.setStatus('Finished. Press Stop to release any remaining notes.');}
+    else if(data.type==='listening'){ui.setRuntimeState('Listening');ui.setStatus('Click Keyboard input, then press your script’s keys.');}
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
   current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
