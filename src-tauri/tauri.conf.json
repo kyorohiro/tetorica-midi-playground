@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tetorica MIDI Playground",
+  "version": "0.1.0",
+  "identifier": "io.tetorica.midi-playground",
+  "build": {"frontendDist": "../ui"},
+  "app": {"withGlobalTauri": true, "windows": [{"title": "Tetorica MIDI — connection experiment", "width": 800, "height": 600}], "security": {"csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"}},
+  "bundle": {"active": false}
+}

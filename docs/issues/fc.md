@@ -188,3 +188,22 @@ The first important success condition is:
 A DAW sends MIDI Clock to Tetorica, Tetorica synchronizes to it, and Tetorica sends MIDI notes back to a DAW or MIDI device.
 
 Everything else can grow from that foundation.
+
+Feasibility Research
+
+See [Tauri / CoreMIDI feasibility investigation](tauri_midi_feasibility.md) for the 2026-09-20 findings, native timing boundary, existing Playground integration points, and proposed connection tests. This is research, not a completed implementation.
+
+
+Implementation progress — 2026-09-20
+
+- [x] Minimal Tauri/CoreMIDI connection UI, port IDs, input/output selection.
+- [x] Native Clock/Start/Continue/Stop state and BPM estimate; unit tests.
+- [x] Native timed C4 test note and optional received-quarter-note test pattern.
+- [x] Dedicated CoreMIDI virtual loopback verified (does not send to the DAW).
+- [ ] Manually verify Tauri UI and DAW routing/recording with the README procedure.
+- [ ] Move callback handoff to a bounded queue before timing-focused integration.
+- [ ] Measure jitter, latency, Clock loss and reconnect behavior with a DAW.
+- [ ] Use findings to integrate existing Playground runtime and scheduled batches.
+
+The current pattern is a connectivity probe, not a completed external-clock
+scheduler or JS liveLoop implementation. Windows and audio remain future work.

@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Tetorica MIDI</title><link rel="stylesheet" href="style.css"><main>
+<h1>Tetorica MIDI</h1><p>macOS connection experiment · MIDI channel 1</p>
+<button id="refresh">Refresh ports</button>
+<label>Clock input <select id="input"></select></label><button id="connectInput">Connect input</button>
+<label>Note output <select id="output"></select></label><button id="connectOutput">Connect output</button>
+<p><button id="note">Play C4 (250 ms)</button> <button id="panic">Stop notes</button> <button id="disconnect">Disconnect</button></p>
+<label><input id="follow" type="checkbox"> Play C4 on each received quarter-note boundary</label>
+<p>This test follows incoming Clock pulses; it is not predictive scheduling. Enable MIDI Clock output in your DAW and press Play.</p>
+<pre id="clock">Disconnected</pre><p id="status" role="status"></p>
+</main><script src="app.js"></script></html>
