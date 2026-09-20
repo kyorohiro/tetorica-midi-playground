@@ -48,3 +48,19 @@ test('random helpers cover endpoints, numeric coercion and interpolation',()=>{
  for(const [min,max] of [[4,2],[2.2,2.8],[NaN,2],[0,Infinity]])assert.throws(()=>api.randInt(min,max));
  assert.throws(()=>api.lerp(0,1,NaN));
 });
+
+test('noteLerp rounds to playable MIDI notes and checks range before rounding',async()=>{
+ const sent=[];
+ const api=createMidiHelpers({send:async note=>sent.push(note),sleep:async()=>{},log:()=>{}});
+ assert.equal(api.noteLerp('C4','C5',0),60);
+ assert.equal(api.noteLerp('C4','C5',1),72);
+ assert.equal(api.noteLerp('C4','C5',0.5),66);
+ assert.equal(api.noteLerp(60,61,0.5),61);
+ assert.equal(api.noteLerp(61,60,0.5),61);
+ assert.equal(api.noteLerp('Bb3','C4',0.5),59);
+ assert.equal(api.noteLerp(60,72,2),84);
+ assert.equal(api.noteLerp(60,72,-1),48);
+ for(const args of [[0,1,-0.1],[126,127,1.1],[60,72,NaN],[60,72,Infinity],['invalid',60,0.5]])assert.throws(()=>api.noteLerp(...args));
+ await api.play(api.noteLerp('C4','C5',0.5),{duration:0.1});
+ assert.equal(sent[0].note,66);
+});

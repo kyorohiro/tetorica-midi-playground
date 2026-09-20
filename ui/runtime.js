@@ -74,5 +74,10 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     return Math.floor(random()*(high-low+1))+low;
   }
   const lerp=(a,b,t)=>{const low=finite(a),high=finite(b);return low+(high-low)*finite(t);};
-  return {play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,log};
+  function noteLerp(from,to,t){
+    const midi=lerp(noteNumber(from),noteNumber(to),t);
+    if(!Number.isFinite(midi)||midi<0||midi>127)throw new Error('Interpolated note outside MIDI range');
+    return Math.round(midi);
+  }
+  return {play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,noteLerp,log};
 }

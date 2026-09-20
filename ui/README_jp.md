@@ -129,4 +129,4 @@ for (const note of chord("E4", "minor7")) {
 - `rrange(min, max)`: random interpolation between two values.
 - `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
 - `lerp(a, b, t)`: linear interpolation; t is not clamped.
-`chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp`はFM版が音源固有のピッチ情報を返すため未対応です。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・1〜16のチャンネルです。
+`chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp(from, to, t)` は音名またはMIDI番号を補間し、playに渡せる整数MIDI番号を返します。最寄りの半音へ丸め、中間値は上の音になります。tは制限せず、補間結果が音域外なら丸める前にエラーにします。FM版のピッチオブジェクトとは異なり、Pitch Bendは送りません。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・1〜16のチャンネルです。

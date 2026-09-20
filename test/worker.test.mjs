@@ -108,3 +108,14 @@ test('stopping scoped loop requests release of the same generation that sent not
  assert.ok(Number.isInteger(result.notes[0].owner));
  assert.deepEqual(result.releases,[result.notes[0].owner]);
 });
+
+test('noteLerp is playable through scoped worker helpers',async()=>{
+ const result=await runLoopScript(`
+ liveLoop('interpolation',async({play,noteLerp})=>{
+   await play(noteLerp('E4','E5',0.5),{duration:0.002});
+   stopLoop('interpolation');
+ });
+ await beat(0.1);
+ `);
+ assert.deepEqual(result.notes.map(x=>x.note),[70]);
+});
