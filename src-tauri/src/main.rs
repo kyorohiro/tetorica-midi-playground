@@ -487,6 +487,8 @@ fn main() {
             test_synth::synth_enable,
             test_synth::synth_mix,
             test_synth::synth_status,
+            test_synth::synth_patches,
+            test_synth::synth_set_patch,
             test_synth::synth_panic,
             keyboard_on,
             keyboard_off,

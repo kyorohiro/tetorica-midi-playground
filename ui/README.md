@@ -191,7 +191,7 @@ Switching tabs, changing the channel/layout, leaving the window, Release notes o
 
 ## Built-in YM2612 audition (macOS trial)
 
-No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six fixed FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Preset editing, sustain and pitch bend are not supported yet.
+No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Preset file import, sustain and pitch bend are not supported yet.
 
 ## Multiple outputs and channels (trial)
 
@@ -222,4 +222,12 @@ liveLoop("bass", async ({playOutput, beat}) => {
 });
 ```
 
-Aliased handles or calls hidden in imported functions are not automatically rewritten. Use `playOutput` to retain individual loop cancellation and note ownership. Global handle calls have whole-Run lifetime. YM2612 currently uses one fixed patch; channel numbers alone do not select different instruments. External applications need their own channel routing.
+Aliased handles or calls hidden in imported functions are not automatically rewritten. Use `playOutput` to retain individual loop cancellation and note ownership. Global handle calls have whole-Run lifetime. YM2612 uses the patch assigned to each channel in the YM2612 tab. External applications need their own channel routing.
+
+## YM2612 channel patch editor
+
+Open **YM2612**, choose **MIDI channel**, edit Algorithm / Feedback and the four operators, then click **Apply patch to channel**. Play a new note on the same channel using Keyboard or `midi.output(..., {channel})`.
+
+The editor supports multiplier, detune (raw register value), total level, rate scaling, attack/decay/sustain/release rates and sustain level. Higher TL means quieter; MULTI 0 means ½. Velocity changes carrier level according to the algorithm. Six physical voices remain shared across all channels.
+
+Apply affects the next Note On only; held notes retain their patch. Stop and rack disable/enable preserve channel patches during this app session. App restart resets patches. Switching channels or Reload discards un-applied edits. Preset file saving/loading, LFO, AM, PMS/AMS and SSG-EG are not implemented in this editor yet.

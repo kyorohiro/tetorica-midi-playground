@@ -10,7 +10,7 @@
 6. Stop releases script notes and resets the internal synths. Mixer Panic resets internal voices; running scripts may send new notes afterward.
 7. Disable the synth before changing audio devices; re-enable to use the new default output. Disabling destroys the MIDI ports; refresh and reconnect the output after re-enabling.
 
-YM2612 has six fixed FM voices shared by all 16 MIDI channels. Sega PSG has three square-wave voices shared across CH1–9 / 11–16, plus a monophonic white-noise voice on CH10. Noise uses fixed clock/32 mode; all note numbers trigger the same noise. PSG velocity maps to 2dB attenuation steps. Tone periods clamp to 1–1023 (low notes below about 109 Hz cannot be reproduced). Same-pitch/channel retrigger replaces the old note. When full, the oldest held voice is stolen. Release tails can be cut when a voice is reused. Unsupported sustain, pitch bend and program-change messages are ignored.
+YM2612 has six FM voices shared by all 16 MIDI channels. Sega PSG has three square-wave voices shared across CH1–9 / 11–16, plus a monophonic white-noise voice on CH10. Noise uses fixed clock/32 mode; all note numbers trigger the same noise. PSG velocity maps to 2dB attenuation steps. Tone periods clamp to 1–1023 (low notes below about 109 Hz cannot be reproduced). Same-pitch/channel retrigger replaces the old note. When full, the oldest held voice is stolen. Release tails can be cut when a voice is reused. Unsupported sustain, pitch bend and program-change messages are ignored.
 
 ## Architecture
 
@@ -27,3 +27,11 @@ Sources are vendored in `src-tauri/vendor/ymfm` and `src-tauri/vendor/segapsg`, 
 ## Future audio routing
 
 The current output is the stereo mix, channels 1/2 of the default device. A virtual audio driver can carry this to another application; it does not turn the Playground itself into a Core Audio device. Separate FM/PSG tracks in GarageBand require a later multichannel output option before mixing. No virtual audio driver is bundled or installed.
+
+## YM2612 channel patch editor
+
+Open **YM2612**, choose **MIDI channel**, edit Algorithm / Feedback and the four operators, then click **Apply patch to channel**. Play a new note on the same channel using Keyboard or `midi.output(..., {channel})`.
+
+The editor supports multiplier, detune (raw register value), total level, rate scaling, attack/decay/sustain/release rates and sustain level. Higher TL means quieter; MULTI 0 means ½. Velocity changes carrier level according to the algorithm. Six physical voices remain shared across all channels.
+
+Apply affects the next Note On only; held notes retain their patch. Stop and rack disable/enable preserve channel patches during this app session. App restart resets patches. Switching channels or Reload discards un-applied edits. Preset file saving/loading, LFO, AM, PMS/AMS and SSG-EG are not implemented in this editor yet.

@@ -1,5 +1,5 @@
 //! Native audition rack. PCM never passes through the WebView.
-use crate::synth_core::Mixer;
+use crate::synth_core::{FmPatch, Instrument, Mixer};
 use crossbeam_queue::ArrayQueue;
 use serde::Serialize;
 use std::sync::{
@@ -13,6 +13,7 @@ struct Event {
 }
 struct Shared {
     queue: ArrayQueue<Event>,
+    patches: ArrayQueue<(u8, FmPatch)>,
     panic: AtomicBool,
     error: AtomicBool,
     volume: [AtomicU32; 2],
@@ -24,6 +25,7 @@ impl Default for Shared {
     fn default() -> Self {
         Self {
             queue: ArrayQueue::new(2048),
+            patches: ArrayQueue::new(64),
             panic: AtomicBool::new(false),
             error: AtomicBool::new(false),
             volume: std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits())),
@@ -54,6 +56,16 @@ impl Shared {
         }
     }
     fn apply(&self, mixer: &mut Mixer) {
+        // Bounded copy-only updates before MIDI; no lock or allocation in audio callback.
+        for _ in 0..64 {
+            let Some((channel, patch)) = self.patches.pop() else {
+                break;
+            };
+            if let Instrument::Ym2612(s) = &mut mixer.synths[0] {
+                let _ = s.set_patch(channel, patch);
+            }
+        }
+
         if self.panic.swap(false, Ordering::AcqRel) {
             // Bounded drain even if MIDI producers keep sending.
             for _ in 0..2048 {
@@ -94,7 +106,7 @@ impl Drop for Running {
     }
 }
 #[derive(Default)]
-pub struct Rack(Mutex<Option<Running>>);
+pub struct Rack(Mutex<Option<Running>>, Mutex<[FmPatch; 16]>);
 #[derive(Serialize)]
 pub struct Status {
     pub enabled: bool,
@@ -102,6 +114,26 @@ pub struct Status {
     error: bool,
 }
 impl Rack {
+    pub fn patches(&self) -> [FmPatch; 16] {
+        *self.1.lock().unwrap()
+    }
+    pub fn set_patch(&self, channel: u8, patch: FmPatch) -> Result<(), String> {
+        patch.validate()?;
+        if !(1..=16).contains(&channel) {
+            return Err("MIDI channel must be 1–16".into());
+        }
+        let guard = self.0.lock().unwrap();
+        let mut bank = self.1.lock().unwrap();
+        if let Some(r) = guard.as_ref() {
+            r.shared
+                .patches
+                .push((channel, patch))
+                .map_err(|_| "FM update queue full; retry Apply")?;
+        }
+        bank[(channel - 1) as usize] = patch;
+        Ok(())
+    }
+
     pub fn panic(&self) {
         if let Some(r) = self.0.lock().unwrap().as_ref() {
             if r.shared
@@ -166,6 +198,9 @@ impl Rack {
         #[cfg(target_os = "macos")]
         {
             let shared = Arc::new(Shared::default());
+            for (i, patch) in self.1.lock().unwrap().iter().enumerate() {
+                let _ = shared.patches.push((i as u8 + 1, *patch));
+            }
             let audio_shared = shared.clone();
             let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
             let (stop_tx, stop_rx) = std::sync::mpsc::channel();
@@ -214,10 +249,7 @@ fn start(
         format => return Err(format!("Unsupported output sample format: {format:?}")),
     }?;
     let mut inputs = Vec::new();
-    for (port, name) in ["Tetorica YM2612", "Tetorica Sega PSG"]
-        .iter()
-        .enumerate()
-    {
+    for (port, name) in ["Tetorica YM2612", "Tetorica Sega PSG"].iter().enumerate() {
         let input = midir::MidiInput::new(name).map_err(|e| e.to_string())?;
         let queue = shared.clone();
         inputs.push(
@@ -299,6 +331,25 @@ pub fn synth_panic(state: tauri::State<Rack>) {
 mod tests {
     use super::*;
     #[test]
+    fn patch_bank_and_queue_are_validated_without_audio_device() {
+        let rack = Rack::default();
+        let mut patch = FmPatch::default();
+        patch.algorithm = 7;
+        rack.set_patch(2, patch).unwrap();
+        assert_eq!(rack.patches()[1].algorithm, 7);
+        assert_eq!(rack.patches()[0].algorithm, 4);
+        patch.feedback = 8;
+        assert!(rack.set_patch(2, patch).is_err());
+        assert_eq!(rack.patches()[1].feedback, 0);
+        let shared = Shared::default();
+        let mut mixer = Mixer::new(48000).unwrap();
+        patch.feedback = 0;
+        shared.patches.push((2, patch)).ok().unwrap();
+        shared.receive(0, &[0x91, 69, 100]);
+        shared.apply(&mut mixer);
+        assert_eq!(mixer.synths[0].active(), 2);
+    }
+    #[test]
     fn overflow_panics_and_drains_without_stuck_notes() {
         let s = Shared::default();
         let mut m = Mixer::new(48000).unwrap();
@@ -342,4 +393,17 @@ mod tests {
         s.receive(0, &[0x90, 255, 90]);
         assert!(s.queue.is_empty());
     }
+}
+
+#[tauri::command]
+pub fn synth_patches(state: tauri::State<Rack>) -> [FmPatch; 16] {
+    state.patches()
+}
+#[tauri::command]
+pub fn synth_set_patch(
+    channel: u8,
+    patch: FmPatch,
+    state: tauri::State<Rack>,
+) -> Result<(), String> {
+    state.set_patch(channel, patch)
 }

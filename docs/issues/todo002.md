@@ -23,7 +23,11 @@
 - [x] Note Off、velocity 0、CC120 / CC123、Stop、Panicに対応。DC除去、簡易線形リサンプル、ゲインの平滑化、最終クリップを実装。
 - [x] PCMの発音・A4ピッチ・消音を44.1/48/96kHzで自動テスト。voice置換、CH分離、FM/PSG分離、パン・ミュート、キューあふれ、Stop直後の新規ノートを検証。
 - [ ] 実機で仮想ポート受信 → 音声出力とUI操作を通し確認する。CPU負荷・音切れも測定する。
-- [ ] CH別の音色設定・音量・ミュートは後続。現在のMixerは音源単位。サステイン、Pitch Bend、Program Change、音色編集は未対応。
+- [x] YM2612タブにCH1〜16別の音色編集を追加。ALGO / FB、OP1〜4のMULTI / DT / TL / RS / AR / D1R / D2R / SL / RR。Apply後の次のNote Onに反映し、発音中の音は変更しない。
+- [x] 音色更新を固定容量キューでNative音声スレッドへ渡す。CH別設定はStop・Rack無効化／再有効化で保持。アプリ終了後の永続保存は未対応。
+- [x] Nativeパラメーター検証、レジスター値、CH分離、発音中の不変性、Panic後の保持、フォーム入力を自動テスト。
+- [ ] 音色ファイル保存・読込、LFO / AM / PMS / AMS / SSG-EG、CH別音量・ミュート、サステイン、Pitch Bend、Program Changeは後続。現在のMixerは音源単位。
+- [ ] 実機でYM2612タブのCHを選択 → 編集 → Apply → 同じCHでKeyboard／コード発音して音色変更を確認。
 - [ ] 切断・デバイス変更時の復旧を実機確認する。現在は無効化→再有効化で再接続。音声デバイス選択UIとメーターは後続。
 
 確認手順: アプリを再起動 → MIDI connectionsでEnable → MIDI設定で`Tetorica YM2612`を選択 → KeyboardまたはRunで発音。Sega PSGも同様（CH10はノイズ）。詳細は[Native synth](native_synth.md)。
