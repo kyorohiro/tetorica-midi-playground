@@ -31,6 +31,7 @@ struct Session {
     transport_stop: bool,
     notes: HashMap<(u8, u8), Instant>,
     note_owners: HashMap<(u8, u8), u64>,
+    note_ticks: HashMap<(u8, u8), u64>,
 }
 impl Session {
     fn stop(&mut self) -> Result<(), String> {
@@ -47,6 +48,7 @@ impl Session {
             }
             self.notes.remove(&(channel, note));
             self.note_owners.remove(&(channel, note));
+            self.note_ticks.remove(&(channel, note));
         }
         Ok(())
     }
@@ -75,6 +77,7 @@ impl Session {
         }
         out.send(&[0x90 | channel, note, velocity])?;
         self.note_owners.remove(&(channel, note));
+            self.note_ticks.remove(&(channel, note));
         self.notes.insert(
             (channel, note),
             Instant::now() + Duration::from_millis(duration_ms),
@@ -96,6 +99,12 @@ impl Session {
         }
         Ok(())
     }
+    fn external_note(&mut self, run_id:u64, owner:Option<u64>, note:u8, channel:u8, velocity:u8, beats:f64) -> Result<(),String> {
+        if !self.external_clock || !beats.is_finite() || beats<=0.0 || beats>128.0 {return Err("Invalid external note duration".into());}
+        self.owned_note(run_id,owner,note,channel,velocity,10000)?;
+        self.note_ticks.insert((channel-1,note),self.clock.ticks+(beats*24.0).ceil() as u64);
+        Ok(())
+    }
     fn release_owner(&mut self, run_id: u64, owner: u64) -> Result<(), String> {
         if run_id != self.run_id {
             return Ok(());
@@ -112,6 +121,7 @@ impl Session {
             }
             self.notes.remove(&(channel, note));
             self.note_owners.remove(&(channel, note));
+            self.note_ticks.remove(&(channel, note));
         }
         Ok(())
     }
@@ -125,7 +135,7 @@ impl Session {
         let keys: Vec<_> = self
             .notes
             .iter()
-            .filter(|(_, deadline)| **deadline <= now)
+            .filter(|(key, deadline)| self.note_ticks.get(key).map_or(**deadline <= now, |tick| self.clock.ticks >= *tick))
             .map(|(key, _)| *key)
             .collect();
         for (channel, note) in keys {
@@ -134,6 +144,7 @@ impl Session {
             }
             self.notes.remove(&(channel, note));
             self.note_owners.remove(&(channel, note));
+            self.note_ticks.remove(&(channel, note));
         }
         Ok(())
     }
@@ -330,13 +341,12 @@ fn play_midi_note(
     channel: u8,
     velocity: u8,
     duration_ms: u64,
+    duration_beats: Option<f64>,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    state
-        .session
-        .lock()
-        .unwrap()
-        .owned_note(run_id, owner, note, channel, velocity, duration_ms)
+    let mut s=state.session.lock().unwrap();
+    if let Some(beats)=duration_beats {s.external_note(run_id,owner,note,channel,velocity,beats)}
+    else {s.owned_note(run_id, owner, note, channel, velocity, duration_ms)}
 }
 #[tauri::command]
 fn release_loop_notes(
@@ -444,6 +454,17 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn external_note_ends_on_pulses_not_elapsed_wall_time() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session {output:Some(Box::new(Fake(messages.clone()))),external_clock:true,external_started:true,..Default::default()};
+        s.clock.running=true;s.last_clock=Some(Instant::now());
+        s.external_note(0,Some(2),60,1,90,0.5).unwrap();
+        s.clock.ticks=11;s.expire(Instant::now()).unwrap();assert_eq!(s.notes.len(),1);
+        s.clock.ticks=12;s.expire(Instant::now()).unwrap();assert!(s.notes.is_empty());assert!(s.note_ticks.is_empty());
+        assert_eq!(*messages.lock().unwrap(),vec![vec![0x90,60,90],vec![0x80,60,0]]);
+        assert!(s.external_note(0,None,60,1,90,f64::NAN).is_err());
     }
     #[test]
     fn external_transport_releases_notes_and_rejects_queued_requests() {

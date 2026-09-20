@@ -144,3 +144,52 @@ test('keyboard callbacks execute in worker and send MIDI',async()=>{
   });
  });}finally{await w.terminate();}
 });
+test('implicit loop callbacks isolate cycles and own notes across await',async()=>{
+ const result=await runLoopScript(`
+ let a=0,b=0;
+ liveLoop('a',async()=>{log('a',cycle([1,2]));await beat(.002);await play(60,{duration:.002});if(++a===2)stopLoop('a');});
+ liveLoop('b',async()=>{log('b',cycle([1,2]));await beat(.003);await play(64,{duration:.002});if(++b===2)stopLoop('b');});
+ await beat(.1);
+ `);
+ assert.deepEqual(result.logs.filter(s=>s.startsWith('a')),['a 1','a 2']);
+ assert.deepEqual(result.logs.filter(s=>s.startsWith('b')),['b 1','b 2']);
+ assert.ok(result.notes.every(n=>n.owner));
+ assert.equal(new Set(result.notes.map(n=>n.owner)).size,2);
+});
+test('Apply replaces a named loop while keeping the same worker alive',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Apply timeout')),3000);let owner,applied=false,released=false;
+  const fail=e=>{clearTimeout(timer);reject(e);};w.on('error',fail);
+  w.on('message',m=>{try{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code:`liveLoop('a',async()=>{await play(60,{duration:.01});});`});
+   if(m.type==='error')throw new Error(m.text);
+   if(m.type==='note'){
+    w.postMessage({type:'reply',id:m.id});
+    if(m.payload.note===60){owner=m.payload.owner;}
+    else {assert.equal(m.payload.note,64);assert.notEqual(m.payload.owner,owner);assert.ok(released);clearTimeout(timer);resolve();}
+   }
+   if(m.type==='release'&&m.owner===owner)released=true;
+   if(m.type==='looping'&&!applied){applied=true;w.postMessage({type:'update',code:`liveLoop('a',async()=>{await play(64,{duration:.01});});`});}
+  }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+});
+test('external play sends beat duration and waits for Clock pulses',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('External play timeout')),3000);let sequence=0,noteSeen=false;
+  const fail=e=>{clearTimeout(timer);reject(e);};w.on('error',fail);
+  const clock=byte=>w.postMessage({type:'clock',event:{runId:1,sequence:++sequence,byte,timestampMs:sequence*20}});
+  w.on('message',m=>{try{
+   if(m.type==='ready')w.postMessage({type:'run',runId:1,externalClock:true,bpm:1,code:`await play(60,{duration:.5});`});
+   if(m.type==='waiting-clock')clock(0xfa);
+   if(m.type==='error')throw new Error(m.text);
+   if(m.type==='note'){
+    noteSeen=true;assert.equal(m.payload.durationBeats,.5);w.postMessage({type:'reply',id:m.id});
+    // Let the acknowledgement establish the wait before advancing the input.
+    setTimeout(()=>{for(let i=0;i<12;i++)clock(0xf8);},20);
+   }
+   if(m.type==='done'){assert.ok(noteSeen);clearTimeout(timer);resolve();}
+  }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+});

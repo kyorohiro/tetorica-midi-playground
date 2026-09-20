@@ -105,7 +105,7 @@ liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
 // stopLoop("lead");
 // stopAllLoops();
 ```
-コールバック引数のヘルパーを使うと、cycleのカウンターがループごと・呼び出し順ごとに分かれ、await後の停止も有効になります。名前付きcycleもループ内で独立します。同名ループの置換はカウンターをリセットし、旧ループの専用ヘルパーを停止します。専用playで送信したノートは個別停止時にMIDI Note Offで解放します。同一チャンネル・同一音を別ループが再発音した場合は最後の発音元が所有し、旧ループの停止では消しません。グローバルplayには個別所有権がありません。画面のStopは全ノートを解放します。引数を使わずグローバルヘルパーを呼ぶ従来コードは反復の境界で停止し、cycleは共有のままです。Runで全再起動する仕様は変わりません。
+コールバック引数のヘルパーを使うと、cycleのカウンターがループごと・呼び出し順ごとに分かれ、await後の停止も有効になります。名前付きcycleもループ内で独立します。同名ループの置換はカウンターをリセットし、旧ループの専用ヘルパーを停止します。専用playで送信したノートは個別停止時にMIDI Note Offで解放します。同一チャンネル・同一音を別ループが再発音した場合は最後の発音元が所有し、旧ループの停止では消しません。グローバルplayには個別所有権がありません。画面のStopは全ノートを解放します。Run fileの直接inline・引数なし・ブロック形式のコールバックも自動束縛します。別関数などでは専用ヘルパーを渡してください。Runで全再起動する仕様は変わりません。
 
 ## Music helpers
 
@@ -131,7 +131,7 @@ for (const note of chord("E4", "minor7")) {
 | `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
 | `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
 
-FM版playは秒（既定0.2）・0始まりのチャンネルです。MIDI版playは拍数をミリ秒へ丸め、1〜10000msかつ128拍以下に制限します。送信失敗はエラーになります。待機中のplayとグローバルbeatはBPM変更後も元の待ち時間を使います。専用beat/nextBeatはループごとの拍位置を管理し、待機中のBPM変更も反映します。ループの拍位置と現在の拍の遅い方を基準に進み、過ぎた拍をまとめて再実行しません。タイマー遅延は起こり得るためサンプル精度は保証しません。scaleは音名に加えて整数MIDI番号のrootも受け付け、octavesの整数制限はFM版より厳格です。完全互換ではありません。
+FM版playは秒（既定0.2）・0始まりのチャンネルです。内部ClockモードのMIDI版playは拍数をミリ秒へ丸め、1〜10000msかつ128拍以下に制限します。送信失敗はエラーになります。待機中のplayとグローバルbeatはBPM変更後も元の待ち時間を使います。専用beat/nextBeatはループごとの拍位置を管理し、待機中のBPM変更も反映します。ループの拍位置と現在の拍の遅い方を基準に進み、過ぎた拍をまとめて再実行しません。タイマー遅延は起こり得るためサンプル精度は保証しません。scaleは音名に加えて整数MIDI番号のrootも受け付け、octavesの整数制限はFM版より厳格です。完全互換ではありません。
 
 ## Keyboard input
 
@@ -169,6 +169,14 @@ MonacoでJavaScriptの色分け、検索（Command/Ctrl+F）、補完（Ctrl+Spa
 
 ## 外部拍Clock（試験版）
 
-MIDI設定でClock入力を接続し、**External MIDI (beat waits only)** を選択してRunを押した後、送信元でStartまたはContinueを送ります。スクリプトはその受信まで待ちます。beat・nextBeatは24パルス＝1拍で待機し、setBpmでは変化しません。**playの音長は引き続きBPM欄／setBpmで決めた固定時間です**。発音全体のテンポ追従は未完成です。
+MIDI設定でClock入力を接続し、**External MIDI (trial)** を選択してRunを押した後、送信元でStartまたはContinueを送ります。スクリプトはその受信まで待ちます。beat・nextBeatは24パルス＝1拍で待機し、setBpmでは変化しません。playの音長もClockパルスに追従します。詳細な制限は末尾を参照してください。
 
 Stop・再Start・1秒のClock途絶でRunを終了し、Note Offを送ります。再開はRunを押し直してから送信元を開始してください。Continueは新しく待機中のRunを開始できますが、終了したスクリプトを再開するものではありません。接続先・Clockモード変更でも停止します。DAWでのタイミング実測は未実施です。
+
+## Applyとループコンテキスト
+
+Runは全停止・再開始、**Apply**はWorkerとBPM・拍位置を維持してRun fileを再評価します。同名ループは旧専用ノートを解放して置換、cycleはリセット。他のループは継続し、新しいコードから削除したループも残るためstopLoopで明示停止します。トップレベル処理は再実行、ローカル変数は新規です。前の評価がawait中ならApplyはConsoleへ通知してスキップします。エラー時はRun全体を停止します。
+
+Run file内の直接inline `liveLoop("lead", async () => { ... })` はplay/beat/nextBeat/cycleをループ内へ束縛し、await後も分離します。明示引数と先頭階層のローカル宣言は維持します。別関数・import先・別名・式だけのコールバックには専用ヘルパーを引数で渡してください。汎用的な非同期コンテキスト伝播ではありません。
+
+外部playのNote Offはnative側でClockパルス数を数えます。1/24拍単位で端数切り上げ、128拍まで。BPM欄/setBpmは外部音長へ影響せず、発音中のテンポ変更にも残り音長が追従します。Worker待機はMIDI応答後から数えるため、IPC・タイマー遅延によりコード再開がnative Note Offより遅れる場合があります。Stop・途絶・再StartでRun終了する仕様は維持します。

@@ -27,8 +27,7 @@ liveLoop("melody", async () => {
 ```
 
 `play` waits for its duration in beats. Native code releases notes independently
-of Worker timers. Each Run restarts loops; live replacement semantics from the FM
-runtime are not yet implemented. Stop terminates the Worker and releases tracked
+of Worker timers. Each Run restarts loops. Apply keeps the Worker and beat clock, replaces same-name loops and restarts their cycle counters. Stop terminates the Worker and releases tracked
 notes. Native run IDs reject late requests from an earlier run. Files persist in
 app local storage; Export file provides a separate backup. Imports never auto-run.
 Scripts are trusted code running in a Worker, not a complete security sandbox.
@@ -37,7 +36,7 @@ FILES modules can be loaded with `await import("./notes.js")` from the Run file.
 Imported modules support static relative imports and exports; see the in-app guide.
 
 Audio, FM presets/effects, SPP/seek, predictive scheduling,
-full external-Clock note-duration tracking and Windows builds are not implemented yet.
+Windows builds are not implemented yet. External play now uses native pulse deadlines; real-device timing validation remains open.
 BPM display in the MIDI tab is an interval estimate, not a PLL.
 
 ### Run

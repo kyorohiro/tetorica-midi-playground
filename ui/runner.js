@@ -1,12 +1,13 @@
+import {bindLoopContext} from './loop-context.js';
 import {createClockWait} from './clock-wait.js';
 import {createClockReceiver} from './clock-receiver.js';
 import {prepareModules} from './modules.js';
 import {createKeyboardHandlers} from './keyboard.js';
 import {createLoops} from './loops.js';
-import {createMidiHelpers} from './runtime.js';
+import {createMidiHelpers,noteNumber} from './runtime.js';
 import {installPlaygroundExecutionGuards} from './shared/playground_execution.js';
 installPlaygroundExecutionGuards(globalThis);
-let sequence=0;
+let sequence=0,evaluate=null,evaluating=false;
 let keyboard=null,clockReceiver=null,external=null;
 const pending=new Map();
 const send=payload=>new Promise((resolve,reject)=>{
@@ -21,6 +22,7 @@ onmessage=async ({data})=>{
     const p=pending.get(data.id);pending.delete(data.id);
     if(p)data.error?p.reject(new Error(data.error)):p.resolve();return;
   }
+  if(data.type==='update'){if(evaluate&&!evaluating)await evaluate(data);else postMessage({type:'log',text:'Apply skipped: previous script evaluation is still running.'});return;}
   if(data.type!=='run')return;
   clockReceiver=createClockReceiver(data.runId);
   external=data.externalClock?createClockWait(clockReceiver,{sleep,onStop:text=>postMessage({type:'error',text})}):null;
@@ -28,7 +30,15 @@ onmessage=async ({data})=>{
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
-  if(external){api.beat=count=>external.beat(count);api.nextBeat=()=>external.nextBeat();}
+  if(external){
+    api.beat=count=>external.beat(count);api.nextBeat=()=>external.nextBeat();
+    api.play=async(note,{duration=0.5,channel=1,velocity=90}={},sender=send)=>{
+      if(!Number.isFinite(duration)||duration<=0||duration>128||!Number.isInteger(channel)||channel<1||channel>16||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid external MIDI note options');
+      external.check();
+      await sender({note:noteNumber(note),channel,velocity,durationMs:10000,durationBeats:duration});
+      await external.beat(Math.ceil(duration*24)/24);
+    };
+  }
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
@@ -51,11 +61,15 @@ onmessage=async ({data})=>{
   }});
   Object.assign(api,{stopLoop:loops.stopLoop,stopAllLoops:loops.stopAllLoops});
   const liveLoop=loops.liveLoop;
+  evaluate=async(data)=>{
+  evaluating=true;
   try {
     if(external){postMessage({type:'waiting-clock'});await external.ready();}
     const modules=await prepareModules(data.files||{},data.code,data.path||'/index.js');
     const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
-    await new AsyncFunction(...Object.keys(api),'liveLoop','console',modules.code)(...Object.values(api),liveLoop,{log,warn:log,error:log});
+    await new AsyncFunction(...Object.keys(api),'liveLoop','console',bindLoopContext(modules.code))(...Object.values(api),liveLoop,{log,warn:log,error:log});
     postMessage({type:loops.size?'looping':keyboard.size?'listening':'done'});
-  } catch(e){postMessage({type:'error',text:String(e)});}
+  } catch(e){postMessage({type:'error',text:String(e)});}finally{evaluating=false;}
+  };
+  await evaluate(data);
 };

@@ -109,7 +109,7 @@ liveLoop("clock-test", async ({play, nextBeat}) => {
 });
 ```
 
-1. **Beat clock → External MIDI (beat waits only)** を選択。
+1. **Beat clock → External MIDI (trial)** を選択。
 2. **Run** を押す。
 3. 画面下部に `Waiting for external MIDI Start / Continue.` が表示される。この時点で音が出ないのは正常。
 4. **送信ツールのターミナル**に `start` と入力してEnter。
@@ -133,7 +133,7 @@ GarageBandの再生ボタンやKeyboard input領域のクリックは、この�
 
 音が出ないときは、送信ツールの `Clock sending`、Tetorica画面下部の状態、Consoleのエラー、GarageBand側の音源選択を確認する。
 
-現段階では **beat / nextBeatだけが外部Clockに追従**し、`play`の音長はTetorica側のBPMから決めた固定時間。テンポ変更では発音間隔を確認する。
+更新後は **playの音長も外部Clockに追従**します（1/24拍単位、端数切り上げ）。durationを4などにして発音中にbpmを変え、残り音長とStop時の解放を確認してください。
 
 確認状況: 今回はポート表示と基本動作についてユーザーから「大丈夫そう」と報告あり。テンポ変更・Stop・dropの各項目の確認結果とタイミング実測は、別途記録する。
 

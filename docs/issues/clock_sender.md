@@ -8,7 +8,7 @@
 2. 別ターミナルで `npm run dev`。MIDI settings → Refresh。
 3. Clock inputで **Tetorica Test Clock** を選択し、**Connect input**。
 4. Note outputをGarageBandの仮想入力などへ接続。GarageBandではソフトウェア音源トラックを選択する。
-5. Beat clockを **External MIDI (beat waits only)** にし、下のコードをRunする。
+5. Beat clockを **External MIDI (trial)** にし、下のコードをRunする。
 
 ```js
 liveLoop("clock-test", async ({play, nextBeat}) => {
@@ -25,7 +25,7 @@ liveLoop("clock-test", async ({play, nextBeat}) => {
 | 入力するコマンド | 期待する結果 |
 | --- | --- |
 | `start` | Start + 24 Clock/拍を送信。Runが待機状態から動き、初期120 BPMなら約0.5秒ごとに発音・log |
-| `bpm 60` | 拍間隔が約1秒に変化。音長はTetoricaのBPM指定のまま |
+| `bpm 60` | 拍間隔が約1秒に変化。音長も外部Clockに追従 |
 | `bpm 180` | 拍間隔が約1/3秒に変化 |
 | `stop` | Stop送信。TetoricaのRun終了、ノート解放 |
 | `drop` | Stopを送らずClockだけ途絶。約1秒後にTetoricaがRun終了・ノート解放 |

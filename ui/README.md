@@ -107,7 +107,7 @@ liveLoop("lead", async ({play, beat, cycle, nextBeat}) => {
 // stopLoop("lead");
 // stopAllLoops();
 ```
-Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Stopping a scoped loop releases its owned notes immediately through MIDI. If another loop retriggers the same channel/note, the latest sender owns it; stopping the old loop does not cut off that note. Global play calls have no loop owner. The Stop button releases all notes. Legacy callbacks using global helpers stop only at the iteration boundary and retain shared cycle counters. Run still restarts everything.
+Use callback helpers for independent cycle counters and cancellation across await. Each cycle call slot advances once per iteration; named cycle keys are also local to the loop. Replacing a loop with the same name resets its counters and cancels the old scoped helpers. Stopping a scoped loop releases its owned notes immediately through MIDI. If another loop retriggers the same channel/note, the latest sender owns it; stopping the old loop does not cut off that note. Global play calls have no loop owner. The Stop button releases all notes. Direct inline zero-argument block callbacks in the Run file now bind loop helpers automatically; callbacks defined elsewhere still need explicit helpers. Run still restarts everything.
 
 ## Music helpers
 
@@ -133,7 +133,7 @@ for (const note of chord("E4", "minor7")) {
 | `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
 | `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
 
-FM `play` uses seconds (default 0.2) and zero-based channels. MIDI play converts to rounded milliseconds and accepts 1–10000 ms, with duration <=128 beats. Sending failure rejects the call. Pending play and global beat waits keep their original duration after a BPM change. Scoped beat/nextBeat use a per-loop beat cursor and follow tempo changes while waiting. Each wait starts from the later of the loop cursor and current beat; missed beats are not replayed. Timer lateness is still possible; no sample-accurate timing is guaranteed. MIDI scale accepts integer MIDI roots as well as note names and validates octave counts more strictly than FM. These are compatibility differences, not full API parity.
+FM `play` uses seconds (default 0.2) and zero-based channels. In internal mode, MIDI play converts to rounded milliseconds and accepts 1–10000 ms, with duration <=128 beats. Sending failure rejects the call. Pending play and global beat waits keep their original duration after a BPM change. Scoped beat/nextBeat use a per-loop beat cursor and follow tempo changes while waiting. Each wait starts from the later of the loop cursor and current beat; missed beats are not replayed. Timer lateness is still possible; no sample-accurate timing is guaranteed. MIDI scale accepts integer MIDI roots as well as note names and validates octave counts more strictly than FM. These are compatibility differences, not full API parity.
 
 ## Keyboard input
 
@@ -171,6 +171,14 @@ Completion uses ECMAScript built-ins and MIDI helpers; browser Window/DOM global
 
 ## External beat clock (trial)
 
-Connect a Clock input in MIDI settings, select **External MIDI (beat waits only)**, then press Run before sending MIDI Start or Continue. Scripts wait for that message. `beat` and `nextBeat` follow incoming pulses (24 per beat); `setBpm` does not change these waits. **play duration still uses the BPM field / setBpm and a fixed native Note Off deadline**, so this is not full tempo-following playback.
+Connect a Clock input in MIDI settings, select **External MIDI (trial)**, then press Run before sending MIDI Start or Continue. Scripts wait for that message. `beat` and `nextBeat` follow incoming pulses (24 per beat); `setBpm` does not change these waits. External play duration follows Clock pulses; see the timing limits below.
 
 MIDI Stop, a repeated Start, or a one-second Clock gap ends the Run and releases notes. Press Run again before restarting the sender. Continue can start a newly armed Run, but does not resume a stopped script. Changing ports or the clock mode also stops the Run. This experimental path still needs DAW timing verification.
+
+## Apply and loop context
+
+**Run** resets everything. **Apply** re-evaluates the selected Run file in the current Worker while preserving BPM and beat phase. Same-name loops are replaced and their scoped notes released; their cycle counters restart. Other loops continue, including loops removed from the new source: use stopLoop(name) to stop them. Top-level code executes again; its lexical variables are fresh. Apply is skipped with a Console message while a previous evaluation is still awaiting completion. Errors still stop the Run.
+
+Direct inline `liveLoop("lead", async () => { ... })` callbacks in the Run file now receive lexical play/beat/nextBeat/cycle bindings, isolated across awaits. Explicit callback parameters and top-level local declarations are preserved. Helper functions defined elsewhere, imported modules, aliases and expression-body callbacks should continue to receive scoped helpers explicitly. This is not general asynchronous context propagation.
+
+External `play` now schedules native Note Off by Clock pulse count: durations are rounded up to 1/24 beat, at most 128 beats. BPM/setBpm does not control external note length. A tempo change during a held note changes its remaining wall-clock length. The Worker wait starts after the MIDI acknowledgement; IPC and timer delays can make script continuation later than native Note Off. Stop, timeout and repeated Start still terminate the Run.

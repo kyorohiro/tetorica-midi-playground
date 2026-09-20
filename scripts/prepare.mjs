@@ -10,3 +10,6 @@ await copyFile(new URL('node_modules/es-module-lexer/LICENSE',base),new URL('ui/
 
 await cp(new URL('node_modules/monaco-editor/min/vs',base),new URL('ui/vendor/monaco/vs',base),{recursive:true});
 for (const name of ['LICENSE','ThirdPartyNotices.txt']) await copyFile(new URL('node_modules/monaco-editor/'+name,base),new URL('ui/vendor/monaco/'+name,base));
+
+await copyFile(new URL('node_modules/acorn/dist/acorn.mjs',base),new URL('ui/vendor/acorn.mjs',base));
+await copyFile(new URL('node_modules/acorn/LICENSE',base),new URL('ui/vendor/acorn.LICENSE',base));
