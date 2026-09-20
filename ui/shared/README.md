@@ -1,0 +1,1 @@
+Unmodified snapshots from hello_ymfm: docs/playground/playground_ui.js, playground_file_tree.js, and docs/js/playground_execution.js. Copied 2026-09-20 to keep this repository standalone. UI layout/colors are adapted from docs/playground/index.html. Preserve LICENSE when updating.

@@ -1,6 +1,7 @@
 mod clock;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -23,6 +24,8 @@ struct Session {
     follow: bool,
     last_clock: Option<Instant>,
     error: Option<String>,
+    run_id: u64,
+    notes: HashMap<(u8, u8), Instant>,
 }
 impl Session {
     fn stop(&mut self) -> Result<(), String> {
@@ -31,6 +34,58 @@ impl Session {
                 out.send(&[0x80, 60, 0]).map_err(|e| e.to_string())?;
             }
             self.off = None;
+        }
+        let keys: Vec<_> = self.notes.keys().copied().collect();
+        for (channel, note) in keys {
+            if let Some(out) = &mut self.output {
+                out.send(&[0x80 | channel, note, 0])?;
+            }
+            self.notes.remove(&(channel, note));
+        }
+        Ok(())
+    }
+    fn script_note(
+        &mut self,
+        run_id: u64,
+        note: u8,
+        channel: u8,
+        velocity: u8,
+        duration_ms: u64,
+    ) -> Result<(), String> {
+        if run_id != self.run_id {
+            return Err("Run was stopped".into());
+        }
+        if note > 127
+            || !(1..=16).contains(&channel)
+            || !(1..=127).contains(&velocity)
+            || !(1..=10000).contains(&duration_ms)
+        {
+            return Err("Invalid note, channel, velocity or duration (1–10000 ms)".into());
+        }
+        let channel = channel - 1;
+        let out = self.output.as_mut().ok_or("Connect an output first")?;
+        if self.notes.contains_key(&(channel, note)) {
+            out.send(&[0x80 | channel, note, 0])?;
+        }
+        out.send(&[0x90 | channel, note, velocity])?;
+        self.notes.insert(
+            (channel, note),
+            Instant::now() + Duration::from_millis(duration_ms),
+        );
+        Ok(())
+    }
+    fn expire(&mut self, now: Instant) -> Result<(), String> {
+        let keys: Vec<_> = self
+            .notes
+            .iter()
+            .filter(|(_, deadline)| **deadline <= now)
+            .map(|(key, _)| *key)
+            .collect();
+        for (channel, note) in keys {
+            if let Some(out) = &mut self.output {
+                out.send(&[0x80 | channel, note, 0])?;
+            }
+            self.notes.remove(&(channel, note));
         }
         Ok(())
     }
@@ -133,6 +188,8 @@ fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), Strin
         .connect(&port, "Tetorica Notes")
         .map_err(|e| e.to_string())?;
     let mut s = state.session.lock().unwrap();
+    s.run_id += 1;
+    s.follow = false;
     s.stop()?;
     s.output = Some(Box::new(next));
     Ok(())
@@ -156,6 +213,7 @@ fn set_follow(enabled: bool, state: tauri::State<AppState>) -> Result<(), String
 #[tauri::command]
 fn stop_notes(state: tauri::State<AppState>) -> Result<(), String> {
     let mut s = state.session.lock().unwrap();
+    s.run_id += 1;
     s.follow = false;
     s.stop()
 }
@@ -164,11 +222,38 @@ fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
     state.input.lock().unwrap().take();
     let mut s = state.session.lock().unwrap();
     s.follow = false;
+    s.run_id += 1;
     let result = s.stop();
     s.output = None;
     s.clock = Default::default();
     s.last_clock = None;
     result
+}
+#[tauri::command]
+fn begin_run(state: tauri::State<AppState>) -> Result<u64, String> {
+    let mut s = state.session.lock().unwrap();
+    s.run_id += 1;
+    s.follow = false;
+    s.stop()?;
+    if s.output.is_none() {
+        return Err("Connect a MIDI output in MIDI settings first".into());
+    }
+    Ok(s.run_id)
+}
+#[tauri::command]
+fn play_midi_note(
+    run_id: u64,
+    note: u8,
+    channel: u8,
+    velocity: u8,
+    duration_ms: u64,
+    state: tauri::State<AppState>,
+) -> Result<(), String> {
+    state
+        .session
+        .lock()
+        .unwrap()
+        .script_note(run_id, note, channel, velocity, duration_ms)
 }
 #[derive(Serialize)]
 struct Snapshot {
@@ -202,6 +287,10 @@ fn main() {
                 break;
             };
             let mut s = shared.lock().unwrap();
+            if let Err(e) = s.expire(Instant::now()) {
+                s.error = Some(e);
+                s.follow = false;
+            }
             let present = s
                 .last_clock
                 .is_some_and(|t| t.elapsed() < Duration::from_secs(1));
@@ -231,6 +320,8 @@ fn main() {
     tauri::Builder::default()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            begin_run,
+            play_midi_note,
             ports,
             connect_input,
             connect_output,
@@ -281,6 +372,46 @@ mod tests {
                 vec![0x80, 60, 0]
             ]
         );
+    }
+    #[test]
+    fn script_notes_expire_and_reject_stale_runs() {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let mut s = Session {
+            output: Some(Box::new(Fake(messages.clone()))),
+            run_id: 5,
+            ..Default::default()
+        };
+        s.script_note(5, 64, 2, 90, 250).unwrap();
+        s.script_note(5, 67, 2, 90, 500).unwrap();
+        assert_eq!(s.notes.len(), 2);
+        s.expire(Instant::now() + Duration::from_secs(1)).unwrap();
+        assert!(s.notes.is_empty());
+        assert_eq!(messages.lock().unwrap().len(), 4);
+        assert!(messages.lock().unwrap().contains(&vec![0x81, 64, 0]));
+        s.run_id += 1;
+        assert!(s.script_note(5, 60, 1, 90, 250).is_err());
+        for (note, channel, velocity, duration) in [
+            (128, 1, 90, 250),
+            (60, 0, 90, 250),
+            (60, 1, 0, 250),
+            (60, 1, 90, 10001),
+        ] {
+            assert!(s.script_note(6, note, channel, velocity, duration).is_err());
+        }
+        assert_eq!(messages.lock().unwrap().len(), 4);
+    }
+    #[test]
+    fn stop_releases_all_script_channels() {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let mut s = Session {
+            output: Some(Box::new(Fake(messages.clone()))),
+            ..Default::default()
+        };
+        s.script_note(0, 60, 1, 90, 250).unwrap();
+        s.script_note(0, 60, 16, 90, 250).unwrap();
+        s.stop().unwrap();
+        assert!(s.notes.is_empty());
+        assert!(messages.lock().unwrap().contains(&vec![0x8f, 60, 0]));
     }
     #[test]
     fn no_output_is_reported_without_scheduling_note_off() {

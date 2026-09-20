@@ -7,9 +7,35 @@ MIDI Clock/Start/Continue/Stop, displays tick position and estimated BPM, and
 sends MIDI note 60 on channel 1 for 250 ms. The optional test pattern emits that
 note at each received 24-clock boundary (first note after 24 ticks).
 
-This is a connectivity experiment, not the full live-coding runtime. Audio,
-`liveLoop`, arbitrary scripts, SPP/seek, predictive scheduling and Windows builds
-are not implemented yet. BPM display is an interval estimate, not a PLL.
+The FM2612-style interface now includes Code / Console / MIDI / Helper tabs,
+Run / Stop, a local file list, JS import/export and an expandable text editor.
+The tab controller and file tree are snapshots of the original Playground modules
+under `ui/shared`; the original Browser application is unchanged. Monaco is not
+yet included; the editor currently uses a textarea.
+
+Connect an output in **MIDI settings**, return to **Code**, and press **Run** on
+`melody.js`. `loop.js` repeats notes until **Stop**. GarageBand needs no Clock
+setup for this. Code uses **internal BPM**, not the external Clock input.
+
+```js
+setBpm(120);
+await play("C4", { duration: 0.5, channel: 1, velocity: 90 });
+await beat(0.5);
+liveLoop("melody", async () => {
+  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });
+});
+```
+
+`play` waits for its duration in beats. Native code releases notes independently
+of Worker timers. Each Run restarts loops; live replacement semantics from the FM
+runtime are not yet implemented. Stop terminates the Worker and releases tracked
+notes. Native run IDs reject late requests from an earlier run. Files persist in
+app local storage; Export JS provides a separate backup. Imports never auto-run.
+Scripts are trusted code running in a Worker, not a complete security sandbox.
+
+Audio, FM presets/effects, module imports, SPP/seek, predictive scheduling,
+external-Clock-driven scripts and Windows builds are not implemented yet.
+BPM display in the MIDI tab is an interval estimate, not a PLL.
 
 ### Run
 
@@ -22,7 +48,7 @@ npm test
 npm run dev
 ```
 
-Build a local executable (installer/signing is not enabled):
+Build a local app bundle (Developer ID signing/notarization is not configured):
 
 ```sh
 npm run build -- --debug
@@ -63,7 +89,7 @@ npm test
 cargo test --manifest-path src-tauri/Cargo.toml --locked private_virtual_port_loopback -- --ignored
 ```
 
-On 2026-09-20: four unit tests and the private CoreMIDI loopback test passed on
+On 2026-09-20: the initial four unit tests and the private CoreMIDI loopback test passed on
 macOS. The loopback verifies MIDI bytes, not DAW timing or WebView interaction.
 DAW recording/latency/jitter and actual UI operation still need manual verification.
 
@@ -124,3 +150,11 @@ This would make it possible to load and control VST instruments and effects from
 The current goal is not to replace a DAW.
 
 The goal is to provide a programmable music environment where JavaScript can control MIDI, audio, sound devices, and eventually VST plugins.
+
+UI migration validation: JavaScript helper tests and native tests cover note
+spelling, BPM durations, parameter bounds, polyphonic Note Off, and stale run
+rejection. Test the new UI manually with GarageBand using `melody.js`, `loop.js`,
+Stop, rerun, and output disconnect. Cmd/Ctrl+Enter runs; Shift+Escape stops.
+
+Release packaging and itch.io page draft: [RELEASE.md](RELEASE.md).
+The in-app FILES README is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.

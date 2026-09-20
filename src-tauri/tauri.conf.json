@@ -3,7 +3,40 @@
   "productName": "Tetorica MIDI Playground",
   "version": "0.1.0",
   "identifier": "io.tetorica.midi-playground",
-  "build": {"frontendDist": "../ui"},
-  "app": {"withGlobalTauri": true, "windows": [{"title": "Tetorica MIDI — connection experiment", "width": 800, "height": 600}], "security": {"csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"}},
-  "bundle": {"active": false}
+  "build": {
+    "frontendDist": "../ui",
+    "beforeDevCommand": "node scripts/prepare.mjs",
+    "beforeBuildCommand": "node scripts/prepare.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Tetorica MIDI Playground",
+        "width": 1100,
+        "height": 760
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app"
+    ],
+    "category": "Music",
+    "shortDescription": "JavaScript MIDI Playground for macOS",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
 }

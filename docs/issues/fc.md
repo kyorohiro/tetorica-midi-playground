@@ -207,3 +207,14 @@ Implementation progress — 2026-09-20
 
 The current pattern is a connectivity probe, not a completed external-clock
 scheduler or JS liveLoop implementation. Windows and audio remain future work.
+
+
+UI migration — 2026-09-20
+
+- [x] FM2612-style toolbar, file list, Code/Console/Helper panels; MIDI connection panel.
+- [x] Reuse existing tab controller, file tree and execution guard snapshots.
+- [x] Worker code execution with MIDI play/beat/choose/setBpm/liveLoop helpers.
+- [x] Native polyphonic Note Off and stale-run rejection; automated tests.
+- [ ] Manually verify new UI with GarageBand. Prior C4 button test succeeded.
+- [ ] Monaco editor and full existing runtime integration (current editor is textarea).
+- [ ] External Clock integration for script execution (currently internal BPM only).
