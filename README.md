@@ -1,5 +1,9 @@
 # Tetorica MIDI Playground
 
+Website: https://kyorohiro.github.io/tetorica-midi-playground/
+
+Download: [GitHub Releases](https://github.com/kyorohiro/tetorica-midi-playground/releases) · [itch.io](https://kyorohiro.itch.io/tetorica-midi-playground)
+
 ## macOS connection experiment
 
 The first Tauri/CoreMIDI experiment is available. It lists MIDI ports, receives

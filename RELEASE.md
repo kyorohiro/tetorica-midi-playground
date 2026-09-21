@@ -103,3 +103,17 @@ This script does not create upload ZIPs or publish to itch.io.
 Do not use `scripts/package-macos.py` for these signed builds: it replaces the
 signature with an ad-hoc signature. Release archives should preserve the signed
 app and include the guides and third-party sources/notices described above.
+
+## GitHub Pages introduction page
+
+The static introduction site lives in `docs/index.html`, with its stylesheet and
+images in `docs/`. No application build is required.
+
+After committing and pushing these files to `main`, open the repository's
+**Settings → Pages** and select **Deploy from a branch**, **main**, **/docs**.
+The public URL will be https://kyorohiro.github.io/tetorica-midi-playground/.
+The `.nojekyll` file keeps deployment as plain static files.
+
+The FM2612 repository's `docs/index.html` links to this page. Publish this site
+before publishing that navigation update. Download buttons point to Releases
+and itch.io, so release versions do not need to be hard-coded in the page.

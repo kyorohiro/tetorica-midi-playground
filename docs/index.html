@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tetorica MIDI Playground — JavaScript to music</title>
+<meta name="description" content="Live-code MIDI melodies and loops in JavaScript on your Mac. Connect Tetorica MIDI Playground to GarageBand, a DAW, or a MIDI instrument.">
+<link rel="icon" type="image/png" href="./assets/app-icon.png">
+<link rel="stylesheet" href="./style.css">
+<meta property="og:title" content="Tetorica MIDI Playground">
+<meta property="og:description" content="Write JavaScript. Play your instruments. A MIDI live coding playground for macOS.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kyorohiro.github.io/tetorica-midi-playground/">
+<meta property="og:image" content="https://kyorohiro.github.io/tetorica-midi-playground/assets/playground.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><a class="brand" href="./"><img src="./assets/app-icon.png" width="48" height="48" alt="">Tetorica <span>MIDI Playground</span></a><nav aria-label="Main"><a href="#start">Get started</a><a href="https://github.com/kyorohiro/tetorica-midi-playground">GitHub ↗</a></nav></header>
+<main id="main">
+<section class="hero">
+<div><p class="eyebrow">CREATE · PLAY · CONNECT</p><h1>Write JavaScript.<br>Play your instruments.</h1><p class="lead">A little code. A melody. Your next idea.<br>Tetorica MIDI Playground connects live coding to the instruments you love.</p><div class="actions"><a class="button" href="https://github.com/kyorohiro/tetorica-midi-playground/releases">Download for macOS ↗</a><a class="button secondary" href="https://kyorohiro.itch.io/tetorica-midi-playground">Find it on itch.io ↗</a></div><p class="caption">Experimental desktop app · Choose the build for your Mac</p></div>
+<img class="hero-icon" src="./assets/app-icon.png" width="1254" height="1254" alt="Tetorica MIDI Playground app icon, with a MIDI connector and teal and orange details">
+</section>
+<figure class="screen"><a href="./assets/playground.png"><img src="./assets/playground.png" width="1592" height="1310" alt="Tetorica MIDI Playground on macOS: JavaScript loop editor, files, Run and Stop controls, and MIDI settings"></a><figcaption>The Playground in action — a JavaScript melody, ready for your MIDI output. Screenshot from September 2026; the interface may evolve.</figcaption></figure>
+<section class="intro"><p class="eyebrow">FROM CODE TO SOUND</p><h2>A playground for musical ideas.</h2><p>Write melodies, choose notes, repeat patterns, and change the tempo. Send your performance to GarageBand, another DAW, or an external MIDI instrument.</p><p>Tetorica sends MIDI; your connected instrument makes the sound. The packaged app needs no Node.js or Rust installation.</p></section>
+<section class="features" aria-label="Features"><article><span class="number">01 / WRITE</span><h3>Start with a few lines.</h3><p>Use familiar JavaScript with <code>play()</code>, <code>beat()</code>, and <code>liveLoop()</code>. Explore the included examples and English / Japanese guides.</p></article><article><span class="number">02 / PLAY</span><h3>Hear an idea take shape.</h3><p>Control tempo, note duration, velocity, and MIDI channel. Run a pattern, listen, then stop and try something new.</p></article><article><span class="number">03 / KEEP</span><h3>Make it yours.</h3><p>Organize scripts in the file panel. Save locally and import or export JavaScript files to keep your experiments.</p></article></section>
+<section class="example"><div><p class="eyebrow">YOUR FIRST LOOP</p><h2>Three notes.<br>Room to explore.</h2><p>Pick a note from C, E, and G. Play it for half a beat, rest for half a beat, then repeat.</p><p>Change the notes or the BPM and hear what happens.</p></div><pre aria-label="JavaScript melody example"><code>setBpm(120);
+
+liveLoop("melody", async () =&gt; {
+  await play(choose(["C4", "E4", "G4"]), {
+    duration: 0.5,
+    channel: 1,
+    velocity: 90
+  });
+  await beat(0.5);
+});</code></pre></section>
+<section id="start"><p class="eyebrow">GET CONNECTED</p><h2>Start with GarageBand.</h2><ol class="steps"><li><h3>Choose an instrument.</h3><p>Open GarageBand, create a software instrument track, and keep it selected.</p></li><li><h3>Connect your MIDI output.</h3><p>Open Tetorica’s MIDI settings and select GarageBand’s virtual input if available. Otherwise, enable an IAC bus in Audio MIDI Setup and select that output. The in-app guide walks through both routes.</p></li><li><h3>Run an example.</h3><p>Test a note, choose an example as the Run file, and press Run. Press Stop to finish. Start with the internal BPM clock; external-clock features are experimental.</p></li></ol></section>
+<section class="related"><div><p class="eyebrow">PART OF TETORICA</p><h2>Explore FM synthesis, too.</h2><p>The MIDI Playground grows from Tetorica FM2612 Playground. Explore YM2612 sounds, the synth, and VGM tools in your browser.</p></div><a class="button secondary" href="https://kyorohiro.github.io/hello_ymfm_wasm/">Explore Tetorica FM2612 ↗</a></section>
+</main><footer><span>Tetorica MIDI Playground · by kyorohiro</span><div><a href="https://github.com/kyorohiro/tetorica-midi-playground/releases">Releases</a><a href="https://kyorohiro.itch.io/tetorica-midi-playground">itch.io</a><a href="https://github.com/kyorohiro/tetorica-midi-playground">Source code</a></div></footer>
+</body></html>
