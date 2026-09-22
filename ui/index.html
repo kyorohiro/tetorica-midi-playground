@@ -14,13 +14,13 @@
 <div class="section-heading"><h2>MIDI connections</h2><button id="refresh">Refresh ports</button></div>
 <div class="connection-card">
 <label><input type="checkbox" id="synthEnable"> Enable YM2612 + Sega PSG</label>
-<p>No DAW required. Enable to add Tetorica YM2612 + Sega PSG to the MIDI output list, then select a port below. Adjust volume and pan in Mixer.</p>
+<p>No DAW required. Tetorica YM2612 and Sega PSG are always listed below. Selecting either enables the native synth automatically. You can also enable or disable it here. Adjust volume and pan in Mixer.</p>
 <p>Uses the default macOS audio output selected when enabled. Disable and enable again after changing devices.</p>
 <p id="rackStatus" role="status">Disabled</p>
 </div>
 <div class="connection-card">
 <h2>Send notes to your instrument</h2>
-<p>Select a destination to connect automatically.</p>
+<p>Select a destination to connect automatically. Internal outputs work without a DAW or prior Enable step.</p>
 <label for="output">1. Choose MIDI output — connects automatically</label>
 <div class="connection-row"><select id="output"></select><button id="connectOutput" class="connect-primary">Reconnect output</button></div>
 <p id="outputStatus" role="status">Checking connection…</p><p id="scriptOutputStatus" role="status">Script outputs: 0 additional connections</p>
@@ -38,8 +38,121 @@
 <pre id="clock">Disconnected</pre>
 </details>
 </section>
-<section id="helpersPanel" class="tab-panel" role="tabpanel" aria-labelledby="helpersTab" hidden><h2>Quick start</h2><p>Connect an output in MIDI settings. In GarageBand, select a software instrument track. Choose a script in Run file and press Run. The default is /index.js, even while viewing README.md.</p><pre>setBpm(120);
-await play("C4", { duration: 0.5 });
-await play("E4", { duration: 0.5 });
-await play("G4", { duration: 1 });</pre><ul><li><code>play(note, {duration, channel, velocity})</code>: duration in beats, channel 1–16, velocity 1–127. Waits for the note length. Native Note Off.</li><li><code>noteOn(note, {channel, velocity})</code> / <code>noteOff(note, {channel, velocity})</code>: held notes on the selected MIDI output; Stop releases tracked notes.</li><li><code>cc(controller, value, {channel})</code>, <code>programChange(program, {channel})</code>, <code>pitchBend(value, {channel})</code>, <code>channelPressure(value, {channel})</code>, <code>polyPressure(note, value, {channel})</code>: MIDI controls. Values/programs 0–127, bend -1…1; support depends on the receiver.</li><li><code>send(bytes)</code>: one raw MIDI message; raw notes are not automatically released. See FILES guide and examples 11/12.</li><li><code>beat(count)</code>: rest for beats at the internal BPM.</li><li><code>nextBeat()</code>: wait for the next internal beat boundary.</li><li><code>chord(root, name)</code>: chord note names (major, minor, major7, minor7, dominant7).</li><li><code>rand()</code>, <code>rrange(min, max)</code>, <code>randInt(min, max)</code>, <code>lerp(a, b, t)</code>, <code>noteLerp(from, to, t)</code> (nearest MIDI note; no Pitch Bend).</li><li><code>setBpm(bpm)</code>, <code>choose(array)</code>, <code>log(...values)</code>.</li><li><code>onKeyboardPressKey(name, callback)</code> / <code>onKeyboardReleaseKey(name, callback)</code>: Run, then focus Keyboard input above the editor. Callback receives key/code and modifier flags.</li><li><code>liveLoop(name, async () =&gt; {...})</code>: repeat until Stop. Each Run restarts all loops. Use callback helpers, e.g. <code>async ({play, beat, cycle}) =&gt; {...}</code>, for loop-local cycles and cancellation. <code>stopLoop(name)</code> / <code>stopAllLoops()</code> stop loops and release notes sent through their scoped play helpers.</li></ul><p>Scripts run in a terminable Worker. Use <code>await import("./notes.js")</code> for FILES modules; see README in FILES. No FM presets or audio effects. External Clock beat waits are experimental; see the FILES guide. Scripts are trusted local code, not a security sandbox.</p><p>Files are saved locally in this app. Export file to keep a separate backup. Keyboard focus must be outside native dialogs for shortcuts.</p></section>
+<section id="helpersPanel" class="tab-panel" role="tabpanel" aria-labelledby="helpersTab" hidden>
+  <div class="helper-intro">
+    <h2>MIDI Playground API</h2>
+    <p>Use <code>pg.</code> to explore the API with completion, or call helpers directly: <code>pg.play(...)</code> and <code>play(...)</code>. Channels are <strong>1–16</strong>; durations and waits are in <strong>beats</strong>. Top-level <code>await</code> is available.</p>
+    <p>Choose the script in <strong>Run file</strong>, then Run. Viewing a file does not change the Run file. Detailed English/Japanese guides and runnable examples are in FILES.</p>
+    <h3>First sound — no external MIDI setup</h3>
+    <pre><code>await enableSoundChip("ym2612");
+const piano = midi.output("tetorica-ym2612", { channel: 1 });
+await piano.play("C4", { duration: 0.5, velocity: 90 });</code></pre>
+  </div>
+  <div class="helper-sections">
+    <section class="helper-section">
+      <h3>Outputs &amp; notes</h3>
+      <ul class="helper-list">
+        <li><code>await enableSoundChip("ym2612")</code><span>Enable the native sound rack. Also accepts <code>"sega-psg"</code>; repeated calls preserve rack settings.</span></li>
+        <li><code>const piano = midi.output("tetorica-ym2612", { channel: 1 })</code><span>Create a destination handle. Use <code>"tetorica-sega-psg"</code> for PSG, or an external port's unique name. Connection opens on first play.</span></li>
+        <li><code>midi.output(MIDI_OUTPUT_01, { channel: 2 })</code><span>Use an assignment from MIDI connections. Available slots: <code>MIDI_OUTPUT_01</code>, <code>MIDI_OUTPUT_02</code>, <code>MIDI_OUTPUT_03</code>, <code>MIDI_OUTPUT_04</code>. Assign them before use.</span></li>
+        <li><code>await piano.play("C4", { duration: 0.5, velocity: 90 })</code><span>Play on the handle's channel. A note can be a name such as <code>"Bb3"</code> or MIDI number 0–127. Duration defaults to 0.5 beats; velocity to 90.</span></li>
+        <li><code>await play("C4", { channel: 1, duration: 0.5, velocity: 90 })</code><span>Use the MIDI output selected in the UI. Velocity is 1–127. <code>await</code> waits for the duration; omitting it allows overlapping notes.</span></li>
+        <li><code>await ctx.playOutput(piano, "C4", { duration: 0.5 })</code><span>Keep a handle's notes owned by a loop when passing its helpers to imported functions. Also available as <code>playOutput(...)</code>.</span></li>
+      </ul>
+    </section>
+    <section class="helper-section">
+      <h3>Low-level MIDI</h3>
+      <p>These use the <strong>selected MIDI output</strong>, not a <code>midi.output()</code> handle. They return a Promise for sending, not for note duration. Default channel: 1.</p>
+      <ul class="helper-list">
+        <li><code>await noteOn("C4", { channel: 1, velocity: 100 })</code><span>Hold a note until noteOff or cleanup. Velocity: 1–127, default 90.</span></li>
+        <li><code>await noteOff("C4", { channel: 1, velocity: 0 })</code><span>Release a note. Release velocity: 0–127, default 0.</span></li>
+        <li><code>await cc(1, 64, { channel: 1 })</code><span>Control Change. Controller and value: integers 0–127. Common controls: 1 modulation, 7 volume, 10 pan, 11 expression, 64 sustain.</span></li>
+        <li><code>await programChange(30, { channel: 1 })</code><span>Raw program number 0–127. Internal preset-number mapping is pending; use the YM2612 tab to edit its channel patch.</span></li>
+        <li><code>await pitchBend(0.5, { channel: 1 })</code><span>-1 minimum, 0 center, +1 maximum. Internal range: ±2 semitones. External range depends on the receiver.</span></li>
+        <li><code>await channelPressure(80, { channel: 1 })</code><span>Channel aftertouch, integer 0–127.</span></li>
+        <li><code>await polyPressure("C4", 80, { channel: 1 })</code><span>Per-note aftertouch, integer 0–127.</span></li>
+        <li><code>await send(new Uint8Array([0xB0, 1, 64]))</code><span>Send one complete raw MIDI message; a regular Array also works. System messages and framed SysEx are supported by the transport. Raw notes/pedals are not tracked: send their release messages yourself.</span></li>
+      </ul>
+      <p>Try <code>examples/11_midi_pitch_bend.js</code> and <code>examples/12_midi_cc.js</code>.</p>
+    </section>
+    <section class="helper-section">
+      <h3>Timing &amp; live loops</h3>
+      <ul class="helper-list">
+        <li><code>setBpm(120)</code><span>Set the internal tempo.</span></li>
+        <li><code>await beat(0.5)</code><span>Wait half a beat. Default: 1 beat.</span></li>
+        <li><code>await nextBeat()</code><span>Wait for the next beat boundary.</span></li>
+        <li><code>liveLoop("lead", async ctx =&gt; { ... })</code><span>Create or replace a named repeating loop. Use <code>ctx.play()</code>, <code>ctx.noteOn()</code>, <code>ctx.beat()</code> or <code>ctx.pg</code> to keep timing and cancellation local.</span></li>
+        <li><code>stopLoop("lead")</code><span>Stop one loop and release its tracked notes.</span></li>
+        <li><code>stopAllLoops()</code><span>Stop all named loops. The Stop button stops the whole Run.</span></li>
+      </ul>
+      <pre><code>liveLoop("lead", async ({ play, beat, cycle }) =&gt; {
+  await play(cycle(["C4", "E4", "G4"]), { duration: 0.25 });
+  await beat(0.25);
+});</code></pre>
+      <p>Direct parameterless inline block callbacks also bind loop-local helpers automatically. <strong>Apply</strong> replaces same-name loops and keeps the clock; other loops continue. <strong>Run</strong> restarts everything. External MIDI Clock is experimental; see the guide.</p>
+    </section>
+    <section class="helper-section">
+      <h3>Scales, chords &amp; patterns</h3>
+      <ul class="helper-list">
+        <li><code>scale("E4", "minorPentatonic", 2)</code><span>Return note names over 2 octaves (default 1). Scales: major, minor, majorPentatonic, minorPentatonic.</span></li>
+        <li><code>chord("C4", "major7")</code><span>Return note names. Chords: major, minor, major7, minor7, dominant7. Does not play them automatically.</span></li>
+        <li><code>choose(["C4", "E4", "G4"])</code><span>Choose a random element from a nonempty array.</span></li>
+        <li><code>cycle(["C4", "E4", "G4"])</code><span>Return successive elements; loop-local counters restart when that loop is replaced.</span></li>
+        <li><code>cycle("bass", ["C3", "G3"])</code><span>Use a named cycle counter.</span></li>
+        <li><code>rand()</code><span>Random number from 0 inclusive to 1 exclusive.</span></li>
+        <li><code>rrange(0.2, 0.8)</code><span>Random number between the supplied bounds.</span></li>
+        <li><code>randInt(60, 72)</code><span>Random integer; both endpoints included.</span></li>
+        <li><code>lerp(0, 100, 0.5)</code><span>Linear interpolation; this example returns 50.</span></li>
+        <li><code>noteLerp("C4", "C5", 0.5)</code><span>Interpolate and round to a MIDI note number. This does not send Pitch Bend.</span></li>
+      </ul>
+    </section>
+    <section class="helper-section">
+      <h3>pg.context &amp; JSDoc</h3>
+      <p><code>context</code> and <code>pg.context</code> are the same shared state object. <strong>Apply preserves it; Run creates a new one.</strong> It is not saved in project cassettes.</p>
+      <pre><code>/** @typedef {{ count?: number }} State */
+const state = /** @type {State} */ (pg.context);
+state.count = (state.count ?? 0) + 1;
+log("Evaluation count:", state.count);</code></pre>
+      <p>JSDoc provides completion and hover. Types include <code>MidiOutput</code>, <code>MidiNote</code>, <code>MidiPlayOptions</code> and <code>TetoricaContext</code>.</p>
+      <p>A <code>liveLoop</code> callback parameter named <code>context</code> is the loop's helper API, distinct from global shared state. Its <code>context.context</code> property accesses shared state.</p>
+      <p>Try <code>examples/10_context_init.js</code> for retained initialization, or <code>examples/03_context_jsdoc.js</code> for typed loop helpers.</p>
+    </section>
+    <section class="helper-section">
+      <h3>Files, imports &amp; Console</h3>
+      <ul class="helper-list">
+        <li><code>const p = await import("./lib/phrase.js")</code><span>Import a FILES module relative to the current file. Include .js or .mjs. The editor completes paths and exported members.</span></li>
+        <li><code>log("note", 60)</code><span>Write to Console. <code>console.log()</code>, <code>console.warn()</code> and <code>console.error()</code> also write there.</span></li>
+      </ul>
+      <p>Imported functions do not inherit the Run file's helpers: pass the loop API and output handle as arguments. Run files use dynamic import; imported modules may use static relative imports/exports. npm packages and remote URLs are not supported.</p>
+      <p>Script errors stop the Run and notify you in the status bar without switching tabs. Open <strong>Console</strong> for details.</p>
+      <p><strong>Menu → Export project</strong> saves files and playback settings as <code>my-project.midi.cassette.zip</code>. Import project restores them; New Project starts with the default lead loop. Export file saves only the viewed file.</p>
+    </section>
+    <section class="helper-section">
+      <h3>Keyboard callbacks</h3>
+      <ul class="helper-list">
+        <li><code>onKeyboardPressKey("notes", async event =&gt; { ... })</code><span>Register a named key-down handler.</span></li>
+        <li><code>onKeyboardReleaseKey("notes", async event =&gt; { ... })</code><span>Register a named key-up handler. Reusing a name replaces that handler.</span></li>
+      </ul>
+      <pre><code>onKeyboardPressKey("notes", async event =&gt; {
+  if (event.code === "KeyA") await noteOn("C4");
+});
+onKeyboardReleaseKey("notes", async event =&gt; {
+  if (event.code === "KeyA") await noteOff("C4");
+});</code></pre>
+      <p>Select a MIDI output, Run, then focus <strong>Keyboard input</strong> above the editor. Typing in the editor does not play notes. Events include key, code, repeat and modifier flags; they are not DOM events. Stop releases tracked notes.</p>
+    </section>
+    <section class="helper-section">
+      <h3>Internal YM2612 / Sega PSG</h3>
+      <p>For selected-output helpers such as <code>noteOn()</code>, choose <strong>Tetorica YM2612</strong> or <strong>Tetorica Sega PSG</strong> in MIDI connections. Selecting an internal output enables it automatically.</p>
+      <ul class="helper-list">
+        <li><code>Pitch Bend</code><span>±2 semitones on tonal voices. PSG CH10 is fixed-pitch noise.</span></li>
+        <li><code>CC7 / CC11 / CC10</code><span>Channel volume / expression / pan. YM2612 pan is left/center/right; PSG uses software stereo pan.</span></li>
+        <li><code>CC64 / CC66</code><span>Sustain / sostenuto. Tracked pedals are released on Stop or owner-loop cleanup.</span></li>
+        <li><code>CC1 / channelPressure / polyPressure</code><span>5 Hz vibrato, up to ±0.5 semitone. The largest value determines depth.</span></li>
+        <li><code>CC120 / CC123 / CC121</code><span>All Sound Off / All Notes Off (obeys pedals) / Reset Controllers (preserves volume and pan).</span></li>
+      </ul>
+      <p>Program Change preset mapping and internal SysEx handling are pending. Edit FM patches in the <strong>YM2612</strong> tab; adjust source levels in <strong>Mixer</strong>. Direct <code>fm</code>/<code>fx</code> APIs from the original Playground are not exposed here.</p>
+    </section>
+  </div>
+</section>
 </section></main><footer><span id="runtimeState">Stopped</span><span id="status" role="status">Connect a MIDI output to begin.</span></footer><script type="module" src="app.js"></script></body></html>

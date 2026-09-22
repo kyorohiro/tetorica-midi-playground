@@ -6,7 +6,7 @@ import {mountSynthRack} from './synth-rack.js';
 import {mountKeyboard} from './keyboard-tab.js';
 import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
 import {keyData} from './keyboard.js';
-import {connectionStatus} from './connection.js';
+import {connectionStatus,midiOutputChoices} from './connection.js';
 import {leadExample} from './examples.js';
 import {ensureEntry,runSource,createNewProject,projectFileName} from './project.js';
 import {withGuide,canRun,isGuide} from './guide.js';
@@ -192,10 +192,10 @@ $('clockMode').onchange=()=>run(stop);
 $('applyButton').onclick=()=>run(async()=>{if(!worker)throw new Error('Press Run first');worker.postMessage({type:'update',code:runSource(files,runPath),path:runPath,files:{...files}});ui.setStatus('Applying '+runPath);});
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'&&!document.querySelector('dialog[open]')){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
-async function refresh(){const ports=await invoke('ports');outputMappings.refresh(ports.output);for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
+async function refresh(){const ports=await invoke('ports');outputMappings.refresh(ports.output);ports.output=midiOutputChoices(ports.output);for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 const outputMappings=mountOutputMappings($('outputMappings'),{storage:localStorage,beforeChange:stop,onError:error=>{ui.logLine(String(error));ui.setStatus(String(error));}});
 $('refresh').onclick=()=>run(refresh);
-mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));},stop);
+const synthRack=mountSynthRack(invoke,refresh,error=>{ui.logLine(String(error));ui.setStatus(String(error));},stop);
 let outputConnecting=false;
 async function connectPort(direction){
   const select=$(direction.toLowerCase()), id=select.value;
@@ -214,7 +214,10 @@ async function connectPort(direction){
         worker?.postMessage({type:'clock',event});
       };
       await invoke('connect_input',{id,clockEvents});
-    } else await invoke('connect_output',{id});
+    } else {
+      await invoke('connect_output',{id});
+      if(id.startsWith('internal:')){await synthRack.sync();await refresh();}
+    }
     showConnection(await invoke('snapshot'));
     ui.setStatus(`${direction} connected`);
   }finally{

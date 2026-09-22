@@ -1,4 +1,4 @@
-// In MIDI connections, enable YM2612 + Sega PSG and select Tetorica YM2612
+// In MIDI connections, select Tetorica YM2612 (it enables automatically)
 // or Tetorica Sega PSG as the MIDI output, then Run. External synths also work.
 // Internal CC1 adds 5 Hz vibrato; CC7/10/64 control volume/pan/sustain.
 setBpm(120);

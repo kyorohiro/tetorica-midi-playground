@@ -1,4 +1,4 @@
-// In MIDI connections, enable YM2612 + Sega PSG and select Tetorica YM2612
+// In MIDI connections, select Tetorica YM2612 (it enables automatically)
 // (or Tetorica Sega PSG) as the MIDI output. Then Run this file.
 // Internal bend range is +/-2 semitones. A compatible external synth also works.
 // Program Change is transmitted, but internal preset-number mapping is pending;

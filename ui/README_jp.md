@@ -195,7 +195,7 @@ MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます
 
 ## 内蔵YM2612で試す（macOS試験版）
 
-DAWなしで確認できます。**MIDI connections**で**YM2612 + Sega PSG**を有効にし、MIDI設定で**Tetorica YM2612**を選んで、KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16でFM音源6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。サステイン・Pitch Bend・CC等に対応します（下記「低レベルMIDI API」参照）。音色ファイル読込は未対応です。
+DAWなしで確認できます。**MIDI connections**の出力一覧で**Tetorica YM2612**を選ぶと、内蔵音源が自動で有効になり接続されます。KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16でFM音源6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。サステイン・Pitch Bend・CC等に対応します（下記「低レベルMIDI API」参照）。音色ファイル読込は未対応です。
 
 ## 複数音源・複数チャンネル（試作）
 
@@ -323,7 +323,7 @@ await cc(1, 64, { channel: 1 });
 await send(new Uint8Array([0xB0, 1, 0]));
 ```
 
-`examples/11_midi_pitch_bend.js`は音を保持してベンドする例、`examples/12_midi_cc.js`は音量・パン・サステイン・モジュレーションの例です。内蔵で試すにはMIDI connectionsで**YM2612 + Sega PSG**を有効にし、出力として**Tetorica YM2612**または**Tetorica Sega PSG**を選択してRunしてください。対応する外部音源でも試せます。
+`examples/11_midi_pitch_bend.js`は音を保持してベンドする例、`examples/12_midi_cc.js`は音量・パン・サステイン・モジュレーションの例です。内蔵で試すにはMIDI connectionsの出力一覧から**Tetorica YM2612**または**Tetorica Sega PSG**を選択してRunしてください。無効時も一覧に表示され、選ぶと自動で有効化・接続されます。対応する外部音源でも試せます。
 
 内蔵音源の対応範囲:
 - Pitch Bendは±2半音固定。発音中の音程も再発音せず変更します。

@@ -198,7 +198,7 @@ Switching tabs, changing the channel/layout, leaving the window, Release notes o
 
 ## Built-in YM2612 audition (macOS trial)
 
-No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Sustain, pitch bend and controllers are supported (see Low-level MIDI API). Preset file import is not supported yet.
+No DAW is required: choose **Tetorica YM2612** in **MIDI connections**. Internal outputs are always listed; selecting one enables the rack and connects automatically. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Sustain, pitch bend and controllers are supported (see Low-level MIDI API). Preset file import is not supported yet.
 
 ## Multiple outputs and channels (trial)
 
@@ -326,7 +326,7 @@ await cc(1, 64, { channel: 1 });
 await send(new Uint8Array([0xB0, 1, 0]));
 ```
 
-To test `examples/11_midi_pitch_bend.js` and `examples/12_midi_cc.js` internally, enable **YM2612 + Sega PSG** in MIDI connections and select **Tetorica YM2612** or **Tetorica Sega PSG** as the output. They also work with a compatible external synth.
+To test `examples/11_midi_pitch_bend.js` and `examples/12_midi_cc.js` internally, select **Tetorica YM2612** or **Tetorica Sega PSG** as the output in MIDI connections; the rack enables automatically. They also work with a compatible external synth.
 
 Internal support:
 - Pitch Bend: fixed ±2 semitones; affects already sounding notes without retriggering.

@@ -341,8 +341,18 @@ fn connect_input(id: String, clock_events: tauri::ipc::Channel<ClockEvent>, stat
     Ok(())
 }
 #[tauri::command]
-fn connect_output(id: String, state: tauri::State<AppState>) -> Result<(), String> {
+fn connect_output(id: String, state: tauri::State<AppState>, rack:tauri::State<test_synth::Rack>) -> Result<(), String> {
+    let internal=match id.as_str() {
+        "internal:ym2612"=>Some("Tetorica YM2612"),
+        "internal:sega-psg"=>Some("Tetorica Sega PSG"),
+        _=>None,
+    };
+    if internal.is_some(){rack.enable(true)?;}
     let output = MidiOutput::new("Tetorica Notes").map_err(|e| e.to_string())?;
+    let id=if let Some(name)=internal {
+        let descriptions=output.ports().iter().map(|p|Ok(Port{id:p.id(),name:output.port_name(p).map_err(|e|e.to_string())?})).collect::<Result<Vec<_>,String>>()?;
+        descriptions[resolve_output_port(&descriptions,name,None)?].id.clone()
+    }else{id};
     let port = output
         .find_port_by_id(&id)
         .ok_or("Output disappeared; refresh ports")?;
