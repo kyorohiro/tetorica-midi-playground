@@ -41,3 +41,48 @@ test('JavaScript completion excludes DOM libraries while preserving language opt
  assert.equal(diagnostics.noSemanticValidation,true);
  assert.ok(helperDocs.play);
 });
+
+function importCompletion(source, path='/index.js', paths=['/index.js','/lib/phrase.js','/lib/notes.mjs','/README.md']) {
+ let provider;
+ const files=[...paths];
+ registerHelpers({languages:{CompletionItemKind:{File:17,Function:1,Variable:4},registerCompletionItemProvider(_,value){provider=value;}}},()=>files);
+ const offset=source.indexOf('|');
+ const text=source.replace('|','');
+ const lines=text.slice(0,offset).split('\n');
+ const position={lineNumber:lines.length,column:lines.at(-1).length+1};
+ const model={uri:{path},getValue:()=>text,getOffsetAt:()=>offset,
+  getLineContent:n=>text.split('\n')[n-1],getWordUntilPosition:()=>({startColumn:position.column,endColumn:position.column})};
+ return {provider,model,position,text,files,result:()=>provider.provideCompletionItems(model,position)};
+}
+
+test('dynamic import offers FILES modules before typing a relative prefix',()=>{
+ for(const quote of ['"',"'"]){
+  const setup=importCompletion(`const p = await import(${quote}|${quote})`);
+  const suggestions=setup.result().suggestions;
+  assert.deepEqual(suggestions.map(s=>s.label),['./lib/notes.mjs','./lib/phrase.js']);
+  assert.ok(suggestions.every(s=>s.kind===17));
+  assert.equal(suggestions[0].range.startColumn,setup.position.column);
+  assert.equal(suggestions[0].range.endColumn,setup.position.column);
+  assert.ok(setup.provider.triggerCharacters.includes(quote));
+  setup.files.push('/new.js');
+  assert.ok(setup.result().suggestions.some(s=>s.label==='./new.js'));
+ }
+});
+
+test('import completion uses the editing file and replaces the entire quoted path',()=>{
+ const setup=importCompletion('const p = await import(\n  "../lib/ph|rase.js")','/examples/demo.js');
+ const item=setup.result().suggestions.find(s=>s.label==='../lib/phrase.js');
+ assert.ok(item);
+ const line=setup.text.split('\n')[1];
+ assert.equal(line.slice(0,item.range.startColumn-1)+item.insertText+line.slice(item.range.endColumn-1),'  "../lib/phrase.js")');
+ assert.equal(item.range.startLineNumber,2);
+ assert.ok(setup.result().suggestions.some(s=>s.label==='../index.js'));
+ const unfinished=importCompletion('await import("./li|');
+ assert.ok(unfinished.result().suggestions.some(s=>s.label==='./lib/phrase.js'));
+});
+
+test('import paths are not offered in comments, other strings or member calls',()=>{
+ for(const source of ['// import("|")','/* import("|") */','const text = `import("|")`;','obj.import("|")','log("|")']){
+  assert.ok(!importCompletion(source).result().suggestions.some(s=>s.kind===17),source);
+ }
+});

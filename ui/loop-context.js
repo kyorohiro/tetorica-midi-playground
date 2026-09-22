@@ -3,17 +3,19 @@ import {parse,tokenizer} from './vendor/acorn.mjs';
 export function bindLoopContext(source) {
   const ast=parse(source,{ecmaVersion:'latest',sourceType:'module',allowAwaitOutsideFunction:true,allowReturnOutsideFunction:true});
   const edits=[];
+  const isPgMember=(node,name)=>node?.type==='MemberExpression'&&!node.computed&&node.object.type==='Identifier'&&node.object.name==='pg'&&node.property.name===name;
+  const isLiveLoop=node=>node?.type==='CallExpression'&&((node.callee.type==='Identifier'&&node.callee.name==='liveLoop')||isPgMember(node.callee,'liveLoop'));
   const outputNames=new Set();
   function findOutputs(n){
     if(!n||typeof n!=='object')return;
-    if(n.type==='VariableDeclarator'&&n.id.type==='Identifier'&&n.init?.type==='CallExpression'&&n.init.callee.type==='MemberExpression'&&n.init.callee.object.name==='midi'&&n.init.callee.property.name==='output')outputNames.add(n.id.name);
+    if(n.type==='VariableDeclarator'&&n.id.type==='Identifier'&&n.init?.type==='CallExpression'&&n.init.callee.type==='MemberExpression'&&(n.init.callee.object.name==='midi'||isPgMember(n.init.callee.object,'midi'))&&n.init.callee.property.name==='output')outputNames.add(n.id.name);
     for(const v of Object.values(n))if(Array.isArray(v))v.forEach(findOutputs);else if(v&&typeof v==='object')findOutputs(v);
   }
   findOutputs(ast);
-  const names=['play','beat','nextBeat','cycle','playOutput'];
+  const names=['play','beat','nextBeat','cycle','playOutput','pg'];
   function walk(node){
     if(!node||typeof node!=='object')return;
-    if(node.type==='CallExpression'&&node.callee.type==='Identifier'&&node.callee.name==='liveLoop'){
+    if(isLiveLoop(node)){
       const fn=node.arguments[1];
       if(fn&&['ArrowFunctionExpression','FunctionExpression'].includes(fn.type)&&fn.params.length===0){
         // Inserting lexical bindings in the body preserves closure variables and comments.
@@ -27,7 +29,7 @@ export function bindLoopContext(source) {
           // Route handle.play calls through this callback's lexical owner.
           function routeCalls(n){
             if(!n||typeof n!=='object')return;
-            if(n.type==='CallExpression'&&n.callee.type==='Identifier'&&n.callee.name==='liveLoop')return;
+            if(isLiveLoop(n))return;
             if(n.type==='CallExpression' && n.callee.type==='MemberExpression' && !n.callee.computed && n.callee.property.name==='play' && n.callee.object.type==='Identifier' && outputNames.has(n.callee.object.name)) {
               const obj=source.slice(n.callee.object.start,n.callee.object.end);
               edits.push({at:n.callee.start,end:n.callee.end,text:'playOutput'});

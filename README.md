@@ -18,7 +18,7 @@ under `ui/shared`; the original Browser application is unchanged. Monaco is not
 yet included; the editor currently uses a textarea.
 
 Connect an output in **MIDI settings**, select `/index.js` in **Run file**, and press **Run**.
-The viewed file and Run file are independent. Select `/loop.js` in Run file to try a loop. `loop.js` repeats notes until **Stop**. GarageBand needs no Clock
+The viewed file and Run file are independent. Select `/examples/05_live_loop.js` in Run file to try a loop. `examples/05_live_loop.js` repeats notes until **Stop**. GarageBand needs no Clock
 setup for this. Code defaults to **internal BPM**. External beat waits are experimental; see the in-app guide.
 
 ```js
@@ -166,7 +166,7 @@ The goal is to provide a programmable music environment where JavaScript can con
 
 UI migration validation: JavaScript helper tests and native tests cover note
 spelling, BPM durations, parameter bounds, polyphonic Note Off, and stale run
-rejection. Test the new UI manually with GarageBand using `melody.js`, `loop.js`,
+rejection. Test the new UI manually with GarageBand using `examples/melody.js`, `examples/05_live_loop.js`,
 Stop, rerun, and output disconnect. Cmd/Ctrl+Enter runs; Shift+Escape stops.
 
 Release packaging and itch.io page draft: [RELEASE.md](RELEASE.md).

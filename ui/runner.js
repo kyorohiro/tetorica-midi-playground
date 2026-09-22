@@ -43,7 +43,7 @@ onmessage=async ({data})=>{
     };
   }
   const outputs=createOutputApi({mappings:data.outputMappings,request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
-  Object.assign(api,{...outputSlots,midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
+  Object.assign(api,{context:{},...outputSlots,midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
@@ -62,17 +62,19 @@ onmessage=async ({data})=>{
       const key=maybeValues===undefined?'slot:'+slot++:'key:'+String(keyOrValues);
       const index=cycles.get(key)||0;cycles.set(key,index+1);return values[index%values.length];
     };
+    helpers.pg={...helpers,liveLoop:loops.liveLoop};
     return {helpers,resetCycleSlots:()=>{slot=0;}};
   }});
   Object.assign(api,{stopLoop:loops.stopLoop,stopAllLoops:loops.stopAllLoops});
   const liveLoop=loops.liveLoop;
+  const pg={...api,liveLoop};
   evaluate=async(data)=>{
   evaluating=true;
   try {
     if(external){postMessage({type:'waiting-clock'});await external.ready();}
     const modules=await prepareModules(data.files||{},data.code,data.path||'/index.js');
     const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
-    await new AsyncFunction(...Object.keys(api),'liveLoop','console',bindLoopContext(modules.code))(...Object.values(api),liveLoop,{log,warn:log,error:log});
+    await new AsyncFunction(...Object.keys(api),'liveLoop','pg','console',bindLoopContext(modules.code))(...Object.values(api),liveLoop,pg,{log,warn:log,error:log});
     postMessage({type:loops.size?'looping':keyboard.size?'listening':'done'});
   } catch(e){postMessage({type:'error',text:String(e)});}finally{evaluating=false;}
   };

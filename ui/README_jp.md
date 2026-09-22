@@ -42,7 +42,7 @@ GarageBandの仮想入力がある場合、この設定は不要です。
 ## 4. JavaScriptで演奏する
 
 「Run file」で「/index.js」を選んで「Run」を押します。この説明を開いたままでも実行できます。
-既定のleadはStopまで繰り返します。melody.jsはC・E・G・Cの順に鳴ります。「loop.js」は「Stop」まで繰り返します。
+既定のleadはStopまで繰り返します。`examples/melody.js`はC・E・G・Cの順に鳴ります。`examples/05_live_loop.js`は「Stop」まで繰り返します。
 
     setBpm(120);
     await play("C4", { duration: 0.5 });
@@ -87,9 +87,9 @@ FM音源、音声出力、エフェクト、Monaco、外部Clockでのコード�
 
 ## Run file
 
-Runは、エディターで開いているファイルとは別に、**Run file**で選んだスクリプトを実行します。既定は単一チャンネルのEマイナーペンタトニックのleadループ `/index.js` です。この説明を開いたままでも実行できます。`melody.js`や`loop.js`を実行する場合は、先に **Run file** で選んでください。保存済みのコードは保持されます。
+Runは、エディターで開いているファイルとは別に、**Run file**で選んだスクリプトを実行します。既定は単一チャンネルのEマイナーペンタトニックのleadループ `/index.js` です。この説明を開いたままでも実行できます。`examples/melody.js`や`examples/05_live_loop.js`を実行する場合は、先に **Run file** で選んでください。保存済みのコードは保持されます。
 
-`scale(root, name, octaves)` は major / minor / majorPentatonic / minorPentatonic に対応。`cycle(values)` は順に値を返し、カウンターはRun内で共有します。`cycle("lead", values)` で別のカウンターを指定できます。Runでリセットします。`nextBeat()` はRun開始を基準とする次の内部拍境界まで待機します。既存プロジェクトでは `/lead.js` をRun fileで選ぶと新しい初期サンプルを試せます。
+`scale(root, name, octaves)` は major / minor / majorPentatonic / minorPentatonic に対応。`cycle(values)` は順に値を返し、カウンターはRun内で共有します。`cycle("lead", values)` で別のカウンターを指定できます。Runでリセットします。`nextBeat()` はRun開始を基準とする次の内部拍境界まで待機します。既存プロジェクトでは `/examples/lead.js` をRun fileで選ぶと新しい初期サンプルを試せます。
 
 タイミング: BPM変更時も現在の拍位置を保ち、待機中のnextBeatにも反映します。拍の境界で呼ぶと次の拍まで待ちます。Workerタイマーは遅延する場合があり、サンプル精度や外部MIDI Clock同期は保証しません。
 
@@ -258,6 +258,8 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 | `examples/`内のファイル | 内容 |
 | --- | --- |
 | `04_first_note.js` | 最初はこれ。FMで1音。音程・長さ・velocityを変更。 |
+| `lead.js` | 選択中のMIDI出力でEマイナーペンタトニックのleadを演奏。 |
+| `melody.js` | 選択中のMIDI出力でC・E・G・Cを順に演奏。 |
 | `05_live_loop.js` | メロディと休符の繰り返し。編集後Applyで更新。 |
 | `06_multi_channel.js` | YM2612のCH1・CH2で2パート。YM2612タブでCH別の音色を編集。 |
 | `01_multi_output.js` | 固定IDでYM2612とPSGを同時に演奏。 |
@@ -271,3 +273,5 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 ## ライブラリの再利用
 
 FILESの`lib/README_jp.md`に手順を記載しています。`examples/09_library.js`はDAWなしで試せます。`lib/phrase.js`の`playPhrase(context, output, notes, options)`にはJSDoc補完用の型を記載しています。例は`await import("../lib/phrase.js")`で読み込み、liveLoopのcontextを明示的に渡すことで停止に追従します。import先はRun fileのローカルなヘルパーを参照できません。ライブラリコードは編集可能で、保存済みの編集は保持します。
+
+`pg.` からMIDI APIを辿れます（`pg.midi.output(...)`、`pg.play(...)`、`pg.liveLoop(...)`）。`context` と `pg.context` は任意の値を保存する同じ共有オブジェクトで、Applyで保持され、Runでリセットされます。`liveLoop` のコールバック引数（`context` など）はループ用APIです。引数を明示する場合、`context.pg` でループ用API、`context.context` で共有状態へアクセスできます。引数なしのインラインコールバックでは、`pg` が自動的にループ用APIに切り替わります。

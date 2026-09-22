@@ -50,6 +50,10 @@ declare function onKeyboardPressKey(name: string, callback: (event: PlaygroundKe
 declare function onKeyboardReleaseKey(name: string, callback: (event: PlaygroundKeyEvent) => void | Promise<void>): void;
 /** Helpers passed to liveLoop. The parameter can be named context or destructured. */
 interface TetoricaContext {
+  /** Shared user state, preserved by Apply and reset by Run. */
+  context: PlaygroundContext;
+  /** API namespace with this loop's timing and cancellation. */
+  pg: PlaygroundAPI;
   play: typeof play; playOutput: typeof playOutput; beat: typeof beat; nextBeat: typeof nextBeat;
   cycle: typeof cycle; setBpm: typeof setBpm; choose: typeof choose; scale: typeof scale; chord: typeof chord;
   rand: typeof rand; rrange: typeof rrange; randInt: typeof randInt; lerp: typeof lerp; noteLerp: typeof noteLerp;
@@ -61,3 +65,11 @@ interface TetoricaContext {
 /** Named repeating callback. Use context helpers to retain cancellation across awaits. */
 declare function liveLoop(name: string, callback: (context: TetoricaContext) => void | Promise<void>): void;
 declare const console: {log: typeof log; warn: typeof log; error: typeof log};
+/** User-defined shared state. Apply preserves this object; Run creates a new one. */
+type PlaygroundContext = Record<string, unknown>;
+declare const context: PlaygroundContext;
+/** Browse the MIDI Playground API through pg. */
+interface PlaygroundAPI extends Omit<TetoricaContext, 'pg'> {
+  liveLoop: typeof liveLoop;
+}
+declare const pg: PlaygroundAPI;

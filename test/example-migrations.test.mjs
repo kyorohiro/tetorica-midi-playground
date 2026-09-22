@@ -13,3 +13,29 @@ test('untouched assigned example upgrades; edited examples and other files survi
  assert.equal(files[path],edited);
  assert.equal(mergeExamples({},bundledExamples)[path],bundledExamples[path]);
 });
+
+test('root samples migrate to examples without duplicates or loss of user edits',async()=>{
+ const {legacyRootExamples}=await import('../ui/examples.js');
+ const original={...legacyRootExamples,'/index.js':'my entry','/custom.js':'my code'};
+ const migrated=mergeExamples(original,bundledExamples);
+ for(const path of Object.keys(legacyRootExamples))assert.ok(!Object.hasOwn(migrated,path),path);
+ assert.equal(migrated['/examples/lead.js'],legacyRootExamples['/lead.js']);
+ assert.equal(migrated['/examples/melody.js'],legacyRootExamples['/melody.js']);
+ assert.ok(migrated['/examples/05_live_loop.js']);
+ assert.ok(!Object.hasOwn(migrated,'/examples/loop.js'));
+ assert.equal(migrated['/index.js'],'my entry');
+ assert.equal(migrated['/custom.js'],'my code');
+ assert.equal(original['/lead.js'],legacyRootExamples['/lead.js']);
+ assert.deepEqual(mergeExamples(migrated,bundledExamples),migrated);
+ const edits=Object.fromEntries(Object.entries(legacyRootExamples).map(([path,code])=>[path,code+'// edited']));
+ const preserved=mergeExamples({...edits,'/examples/lead.js':'edited destination'},bundledExamples);
+ for(const [path,code] of Object.entries(edits))assert.equal(preserved[path],code);
+ assert.equal(preserved['/examples/lead.js'],'edited destination');
+});
+
+test('moved samples are bundled from their source files',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ for(const name of ['lead.js','melody.js']){
+  assert.equal(bundledExamples['/examples/'+name],await readFile(new URL('../ui/examples/'+name,import.meta.url),'utf8'));
+ }
+});

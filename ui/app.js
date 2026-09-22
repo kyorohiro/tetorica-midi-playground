@@ -17,11 +17,9 @@ let auditionKeyboard=null;
 const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
-const defaults={'/melody.js':'setBpm(120);\nfor (const note of ["C4", "E4", "G4", "C5"]) {\n  await play(note, { duration: 0.5 });\n}\nlog("Done");\n','/loop.js':'setBpm(120);\nliveLoop("melody", async () => {\n  await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });\n  await beat(0.5);\n});\n'};
-let files={...defaults};
+let files={};
 try{const stored=JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
 files=mergeExamples(files,bundledExamples);
-if(!Object.hasOwn(files,'/lead.js')) files['/lead.js']=leadExample;
 files=withGuide(ensureEntry(files, leadExample));
 let runPath="/index.js";
 function refreshRunFiles(){
@@ -151,7 +149,7 @@ run(refresh);
 // Keep the textarea usable while the locally bundled editor loads or if it fails.
 loadMonaco().then(monaco=>{
   configureJavaScript(monaco);
-  registerHelpers(monaco);
+  registerHelpers(monaco,()=>Object.keys(files));
   const container=document.createElement('div');container.id='monacoEditor';
   $('editor').after(container);
   try {

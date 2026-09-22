@@ -290,3 +290,48 @@ test('worker exposes logical output identifiers and sends selected port identity
  });assert.deepEqual(outputs,[{name:'Piano',portId:'saved-id'}]);assert.equal(notes[0].route,3);assert.equal(notes[0].channel,4);
  }finally{await w.terminate();}
 });
+
+test('pg APIs scope parallel implicit loops and expose shared context',async()=>{
+ const result=await runLoopScript(`
+ if(pg.context!==context)throw Error('context identity');
+ context.value=42;
+ pg.log(pg.context.value);
+ let a=0,b=0;
+ pg.liveLoop('a',async()=>{
+   pg.log('a',pg.cycle([1,2]));await pg.beat(.002);
+   await pg.play(60,{duration:.002});if(++a===2)pg.stopLoop('a');
+ });
+ pg.liveLoop('b',async()=>{
+   pg.log('b',pg.cycle([1,2]));await pg.beat(.003);
+   await pg.play(64,{duration:.002});if(++b===2)pg.stopLoop('b');
+ });
+ pg.liveLoop('cancel',async()=>{await pg.beat(.1);await pg.play(67);});
+ await pg.beat(.04);pg.stopLoop('cancel');await pg.beat(.16);
+ pg.stopAllLoops();
+ `);
+ assert.equal(result.logs[0],'42');
+ assert.deepEqual(result.logs.filter(s=>s.startsWith('a')),['a 1','a 2']);
+ assert.deepEqual(result.logs.filter(s=>s.startsWith('b')),['b 1','b 2']);
+ assert.equal(result.notes.length,4);
+ assert.ok(result.notes.every(n=>n.owner));
+ assert.equal(new Set(result.notes.map(n=>n.owner)).size,2);
+ assert.ok(!result.notes.some(n=>n.note===67));
+});
+
+test('Apply preserves context and pg.context identity',async()=>{
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('context timeout')),3000);
+  let applied=false;
+  const fail=e=>{clearTimeout(timer);reject(e);};
+  w.on('error',fail);
+  w.on('message',m=>{try{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,code:'context.value=42;'});
+   if(m.type==='error')throw Error(m.text);
+   if(m.type==='done'){
+    if(!applied){applied=true;w.postMessage({type:'update',code:`if(context!==pg.context||pg.context.value!==42)throw Error('lost state');`});}
+    else {clearTimeout(timer);resolve();}
+   }
+  }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+});

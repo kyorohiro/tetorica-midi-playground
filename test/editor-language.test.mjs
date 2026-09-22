@@ -33,7 +33,7 @@ test('Monaco infers output handles, loop context, options and literal chip IDs',
  assert.ok(options.includes('duration'));assert.ok(options.includes('velocity'));assert.ok(!options.includes('channel'));
  const destinations=await completions('midi.output("/*here*/");');assert.ok(destinations.includes('tetorica-ym2612'));assert.ok(destinations.includes('tetorica-sega-psg'));
  const chips=await completions('enableSoundChip("/*here*/");');assert.ok(chips.includes('ym2612'));assert.ok(chips.includes('sega-psg'));
- const globals=await completions('/*here*/');assert.ok(globals.includes('MIDI_OUTPUT_01'));assert.ok(!globals.includes('screenLeft'));assert.ok(!globals.includes('document'));assert.ok(!globals.includes('context'));
+ const globals=await completions('/*here*/');assert.ok(globals.includes('MIDI_OUTPUT_01'));assert.ok(!globals.includes('screenLeft'));assert.ok(!globals.includes('document'));assert.ok(globals.includes('context'));assert.ok(globals.includes('pg'));
 });
 test('JSDoc types and hover come from the shipped API declarations',async()=>{
  const code='/** @param {MidiOutput} instrument */\nfunction melody(instrument){instrument./*here*/}';
@@ -61,4 +61,14 @@ test('bundled library exposes JSDoc options through dynamic relative imports',as
  const worker=language(code,{'file:///lib/phrase.js':module});
  const result=await worker.getCompletionsAtPosition('file:///index.js',code.length);
  for(const name of ['duration','velocity'])assert.ok(result.entries.some(e=>e.name===name),name);
+});
+
+test('pg namespace exposes MIDI APIs, shared state and typed loop helpers',async()=>{
+ const members=await completions('pg./*here*/');
+ for(const name of ['context','liveLoop','play','beat','midi','enableSoundChip','MIDI_OUTPUT_01'])assert.ok(members.includes(name),name);
+ assert.ok((await completions('pg.midi./*here*/')).includes('output'));
+ assert.ok((await completions('pg.midi.output("x")./*here*/')).includes('play'));
+ assert.ok((await completions('pg.play("C4",{/*here*/});')).includes('duration'));
+ const scoped=await completions('pg.liveLoop("a",async ctx=>{ctx.pg./*here*/});');
+ for(const name of ['play','beat','cycle','context'])assert.ok(scoped.includes(name),name);
 });

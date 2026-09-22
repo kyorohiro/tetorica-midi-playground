@@ -43,7 +43,7 @@ GarageBand virtual input is available.
 ## 4. Play with JavaScript
 
 Select “/index.js” in “Run file” and click “Run”, even with this guide open.
-The default lead repeats until Stop. melody.js plays C, E, G, C. “loop.js” repeats until you click “Stop”.
+The default lead repeats until Stop. `examples/melody.js` plays C, E, G, C. `examples/05_live_loop.js` repeats until you click “Stop”.
 
     setBpm(120);
     await play("C4", { duration: 0.5 });
@@ -89,9 +89,9 @@ When finished, click Stop, then Disconnect in MIDI settings.
 
 ## Run file
 
-Run executes the script selected in **Run file**, independently of the file open in the editor. The default is `/index.js`, a single-channel E minor pentatonic lead loop. You can read this guide while running it. To run `melody.js` or `loop.js`, select it in **Run file** first. Existing saved scripts are preserved.
+Run executes the script selected in **Run file**, independently of the file open in the editor. The default is `/index.js`, a single-channel E minor pentatonic lead loop. You can read this guide while running it. To run `examples/melody.js` or `examples/05_live_loop.js`, select it in **Run file** first. Existing saved scripts are preserved.
 
-`scale(root, name, octaves)` supports major, minor, majorPentatonic and minorPentatonic. `cycle(values)` cycles through values; counters are shared within a Run. Use `cycle("lead", values)` to give a pattern its own counter. Run resets counters. `nextBeat()` waits for the next internal beat boundary shared by this Run. Select `/lead.js` to try the new default in an existing project.
+`scale(root, name, octaves)` supports major, minor, majorPentatonic and minorPentatonic. `cycle(values)` cycles through values; counters are shared within a Run. Use `cycle("lead", values)` to give a pattern its own counter. Run resets counters. `nextBeat()` waits for the next internal beat boundary shared by this Run. Select `/examples/lead.js` to try the new default in an existing project.
 
 Timing: changing BPM preserves the current beat position and updates pending nextBeat waits. A call exactly on a boundary waits for the following beat. Worker timers may run late; this is not sample-accurate timing or external MIDI Clock synchronization.
 
@@ -260,6 +260,8 @@ Open an example, select its path in **Run file**, then press **Run**. Use **Stop
 | File in `examples/` | What to try |
 | --- | --- |
 | `04_first_note.js` | Start here: one FM note; change pitch, duration or velocity. |
+| `lead.js` | E minor pentatonic lead using the selected MIDI output. |
+| `melody.js` | C, E, G, C in sequence using the selected MIDI output. |
 | `05_live_loop.js` | Repeating melody with a gap. Edit and Apply while playing. |
 | `06_multi_channel.js` | Two parts on YM2612 CH1 and CH2; edit their patches in the YM2612 tab. |
 | `01_multi_output.js` | YM2612 and PSG together, using fixed internal IDs. |
@@ -273,3 +275,5 @@ The last two examples deliberately demonstrate external setup. Port names are no
 ## Reusable libraries
 
 Open `lib/README.md` in FILES for the module guide, or run `examples/09_library.js` to try it without a DAW. `lib/phrase.js` exports `playPhrase(context, output, notes, options)` with JSDoc completion. The example uses `await import("../lib/phrase.js")` and passes its liveLoop context explicitly so cancellation follows the loop. Imported modules do not inherit the Run file's local helpers. Library code is editable and saved edits are preserved.
+
+Use `pg.` to browse the MIDI API, for example `pg.midi.output(...)`, `pg.play(...)`, and `pg.liveLoop(...)`. `context` and `pg.context` refer to the same user-defined state object: Apply preserves it and Run resets it. Inside an explicit `liveLoop` callback, its parameter (often named `context`) is the loop helper API, not the shared state; use `context.pg` for scoped API calls and `context.context` for shared state. Parameterless inline callbacks automatically scope `pg` to their loop.

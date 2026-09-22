@@ -1,4 +1,5 @@
 import {apiTypes} from './api-types.js';
+import {tokenizer} from './vendor/acorn.mjs';
 // Worker scripts use ECMAScript built-ins, not the browser Window/DOM API.
 export function configureJavaScript(monaco) {
   const defaults = monaco.languages.typescript.javascriptDefaults;
@@ -16,6 +17,7 @@ export function createFileEditor(monaco, container, onChange) {
     model: null, theme: 'vs-dark', automaticLayout: true,
     minimap: {enabled: false}, fontSize: 14, tabSize: 2,
     scrollBeyondLastLine: false, ariaLabel: 'JavaScript editor',
+    quickSuggestions: {other: true, comments: false, strings: true},
   });
   const listener = editor.onDidChangeModelContent(() => {
     if (current && !current.readOnly) onChange(current.path, editor.getValue());
@@ -45,6 +47,8 @@ export function createFileEditor(monaco, container, onChange) {
 }
 
 export const helperDocs = {
+  context: 'Shared user state: context.value = ... . Preserved by Apply; reset by Run. Also available as pg.context.',
+  pg: 'MIDI Playground API namespace: pg.play(), pg.liveLoop(), pg.midi.output(), pg.context.',
   ...Object.fromEntries([1,2,3,4].map(i=>[`MIDI_OUTPUT_0${i}`,`Logical output slot ${i}: assign a destination in MIDI connections, then pass to midi.output().`])),
   enableSoundChip: 'await enableSoundChip("ym2612" | "sega-psg"): initialize the native sound rack. Existing audio is preserved.',
   midi: 'midi.output(name, {channel: 1}): output handle. Internal IDs: tetorica-ym2612, tetorica-sega-psg. Call handle.play(note, {duration, velocity}).',
@@ -70,15 +74,54 @@ export const helperDocs = {
   onKeyboardPressKey: 'onKeyboardPressKey(name, callback): focused Keyboard input keydown.',
   onKeyboardReleaseKey: 'onKeyboardReleaseKey(name, callback): focused Keyboard input keyup.',
 };
-export function registerHelpers(monaco) {
+// Inspect tokens so text resembling import() inside comments/strings is ignored.
+function importPathRange(model, position) {
+  if (!model.getValue || !model.getOffsetAt) return null;
+  const source = model.getValue(), offset = model.getOffsetAt(position);
+  const match = /(["'])([^"'\\\r\n]*)$/.exec(source.slice(0, offset));
+  if (!match) return null;
+  const quote = offset - match[0].length;
+  try {
+    const tokens = [...tokenizer(source.slice(0, quote) + '""', {ecmaVersion: 'latest'})];
+    const [keyword, open, string] = tokens.slice(-3);
+    if (keyword?.type.label !== 'import' || open?.type.label !== '(' || string?.type.label !== 'string' || string.start !== quote) return null;
+    if (['.', '?.'].includes(tokens.at(-4)?.type.label)) return null;
+  } catch { return null; }
+  const suffix = /^[^"'\\\r\n]*/.exec(source.slice(offset))[0];
+  return {
+    startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+    startColumn: position.column - match[2].length, endColumn: position.column + suffix.length,
+  };
+}
+
+function relativeImportPath(from, to) {
+  const base = from.split('/').slice(1, -1), target = to.split('/').slice(1);
+  while (base.length && target.length && base[0] === target[0]) {base.shift(); target.shift();}
+  return (base.length ? '../'.repeat(base.length) : './') + target.join('/');
+}
+
+export function registerHelpers(monaco, getFilePaths = () => []) {
   return monaco.languages.registerCompletionItemProvider('javascript', {
+    triggerCharacters: ['"', "'", '/', '.'],
     provideCompletionItems(model, position) {
+      const importRange = importPathRange(model, position);
+      if (importRange) {
+        const from = model.uri.path;
+        return {suggestions: getFilePaths()
+          .filter(path => path !== from && /\.m?js$/i.test(path))
+          .sort()
+          .map(path => {
+            const specifier = relativeImportPath(from, path);
+            return {label: specifier, insertText: specifier, detail: path,
+              kind: monaco.languages.CompletionItemKind.File, range: importRange};
+          })};
+      }
       const word = model.getWordUntilPosition(position);
       // Member completion comes from the language service, not global helper names.
       const prefix=model.getLineContent?.(position.lineNumber).slice(0,word.startColumn-1)??'';
       if(/\.\s*$/.test(prefix))return {suggestions:[]};
       const range = {startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn};
-      return {suggestions: Object.entries(helperDocs).map(([name, detail]) => ({label: name, insertText: name, detail, kind: monaco.languages.CompletionItemKind.Function, range}))};
+      return {suggestions: Object.entries(helperDocs).map(([name, detail]) => ({label: name, insertText: name, detail, kind: monaco.languages.CompletionItemKind[name==='pg'||name==='context'?'Variable':'Function'], range}))};
     },
   });
 }
