@@ -247,9 +247,15 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 
 `examples/03_context_jsdoc.js`を開いて **Run file** に指定すると、DAWなしで内蔵YM2612の例を試せます。`piano.play()`、演奏オプション、音源ID、`MIDI_OUTPUT_01`〜`04`を補完します。
 
-`context`は`liveLoop("name", async context => { ... })`で受け取る引数です。グローバル変数ではありません。importした関数や引数ありのcallbackでは`context.playOutput(instrument, note, options)`を使うと、そのループの停止に発音が追従します。
+この例の`context`は`liveLoop("name", async context => { ... })`で受け取るループ用APIの引数です。グローバルの共有状態`context`／`pg.context`とは異なります。importした関数や引数ありのcallbackでは`context.playOutput(instrument, note, options)`を使うと、そのループの停止に発音が追従します。
 
 自作関数のJSDocでは`MidiOutput`、`MidiPlayOptions`、`MidiNoteOptions`、`MidiNote`、`TetoricaContext`を使えます。`@param`・`@returns`・`@typedef`による補完とホバーに対応します。FILES内の相対JavaScript importは、未選択のファイルも補完に使います。npmパッケージのimportや実行時の型検証を追加するものではありません。`screenLeft`等のDOM候補は除外し、Monacoを読み込めない場合のテキストエディターでは補完しません。
+
+### 初期化した情報をcontextで引き継ぐ
+
+`examples/10_context_init.js`はYM2612 Playgroundの`pg-context-init`をMIDI向けに移植した例です。JSDocの`@typedef`で`ContextInitState`を定義し、`@type`で`pg.context`に型を付けると、`state.`から`instrument`・`hitCount`、`state.instrument.`から`play`を補完できます。
+
+**Run**で内蔵YM2612を初期化し、C・E・Gを演奏します。演奏後に**Apply**すると、保存したMIDI出力を再利用して回数が増えます。音符を編集してApplyしても初期化情報は引き継がれます。Consoleの`Initialized pg.context.`は初回だけ、`Evaluation count:`は毎回表示されます。**Run**は新しい状態で回数1から開始します。Stopやアプリ終了をまたぐ永続保存ではありません。JSDocは補完用で、実行時の型検証は行いません。
 
 ## FILESのexamples
 
@@ -263,7 +269,8 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 | `05_live_loop.js` | メロディと休符の繰り返し。編集後Applyで更新。 |
 | `06_multi_channel.js` | YM2612のCH1・CH2で2パート。YM2612タブでCH別の音色を編集。 |
 | `01_multi_output.js` | 固定IDでYM2612とPSGを同時に演奏。 |
-| `03_context_jsdoc.js` | contextとJSDoc付きの自作関数。 |
+| `03_context_jsdoc.js` | ループ用contextとJSDoc付きの自作関数。 |
+| `10_context_init.js` | JSDocで共有状態を型定義し、初期化したMIDI出力と回数をApplyで引き継ぐ。 |
 | `02_assigned_outputs.js` | 初期状態は内蔵音源。コメントで論理出力への切替を案内。 |
 | `07_external_output.js` | MIDI受信アプリを起動し、コードの仮の名前を実際のポート名へ変更して使用。 |
 | `08_output_slots.js` | MIDI connectionsで01をYM2612、02をPSGへ割り当ててから実行。 |

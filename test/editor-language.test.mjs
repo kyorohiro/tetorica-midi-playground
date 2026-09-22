@@ -72,3 +72,12 @@ test('pg namespace exposes MIDI APIs, shared state and typed loop helpers',async
  const scoped=await completions('pg.liveLoop("a",async ctx=>{ctx.pg./*here*/});');
  for(const name of ['play','beat','cycle','context'])assert.ok(scoped.includes(name),name);
 });
+
+test('shared context initialization sample exposes its JSDoc state and output type',async()=>{
+ const sample=await readFile(new URL('../ui/examples/10_context_init.js',import.meta.url),'utf8');
+ const state=await completions(sample+'\nstate./*here*/');
+ for(const name of ['instrument','hitCount'])assert.ok(state.includes(name),name);
+ assert.ok((await completions(sample+'\nstate.instrument./*here*/')).includes('play'));
+ const options=await completions(sample+'\nstate.instrument.play("C4",{/*here*/});');
+ for(const name of ['duration','velocity'])assert.ok(options.includes(name),name);
+});

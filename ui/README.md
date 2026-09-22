@@ -249,7 +249,7 @@ Assignments are saved locally. Changing one stops playback; press Run again. Eac
 
 Open `examples/03_context_jsdoc.js` and select it as **Run file** to try the built-in YM2612 example without a DAW. The editor completes `piano.play()`, play options, sound chip IDs and `MIDI_OUTPUT_01`–`04`.
 
-`context` is the parameter in `liveLoop("name", async context => { ... })`, not a global variable. Use `context.playOutput(instrument, note, options)` in imported helpers or callbacks with explicit parameters to keep notes attached to that loop.
+`context` in this example is the loop helper parameter in `liveLoop("name", async context => { ... })`. It differs from the global shared state `context` / `pg.context`. Use `context.playOutput(instrument, note, options)` in imported helpers or callbacks with explicit parameters to keep notes attached to that loop.
 
 For your own functions, use JSDoc types `MidiOutput`, `MidiPlayOptions`, `MidiNoteOptions`, `MidiNote`, and `TetoricaContext`. `@param`, `@returns` and `@typedef` support completion and hover. Relative JavaScript imports in FILES are available to the editor even before opening their tabs. This does not add npm package imports or runtime type validation. DOM globals such as `screenLeft` are excluded. The plain-text editor fallback has no completion.
 
@@ -265,6 +265,7 @@ Open an example, select its path in **Run file**, then press **Run**. Use **Stop
 | `05_live_loop.js` | Repeating melody with a gap. Edit and Apply while playing. |
 | `06_multi_channel.js` | Two parts on YM2612 CH1 and CH2; edit their patches in the YM2612 tab. |
 | `01_multi_output.js` | YM2612 and PSG together, using fixed internal IDs. |
+| `10_context_init.js` | JSDoc-typed shared state: retain the initialized MIDI output and evaluation count across Apply. |
 | `03_context_jsdoc.js` | Loop context and a reusable function with JSDoc types. |
 | `02_assigned_outputs.js` | Built-in outputs by default; comments show how to switch to slots. |
 | `07_external_output.js` | Requires a running MIDI receiver and replacing the placeholder port name. |
@@ -277,3 +278,9 @@ The last two examples deliberately demonstrate external setup. Port names are no
 Open `lib/README.md` in FILES for the module guide, or run `examples/09_library.js` to try it without a DAW. `lib/phrase.js` exports `playPhrase(context, output, notes, options)` with JSDoc completion. The example uses `await import("../lib/phrase.js")` and passes its liveLoop context explicitly so cancellation follows the loop. Imported modules do not inherit the Run file's local helpers. Library code is editable and saved edits are preserved.
 
 Use `pg.` to browse the MIDI API, for example `pg.midi.output(...)`, `pg.play(...)`, and `pg.liveLoop(...)`. `context` and `pg.context` refer to the same user-defined state object: Apply preserves it and Run resets it. Inside an explicit `liveLoop` callback, its parameter (often named `context`) is the loop helper API, not the shared state; use `context.pg` for scoped API calls and `context.context` for shared state. Parameterless inline callbacks automatically scope `pg` to their loop.
+
+### Retain initialization with context
+
+`examples/10_context_init.js` adapts the YM2612 Playground's `pg-context-init` example. It defines `ContextInitState` with JSDoc `@typedef` and annotates `pg.context` with `@type`. Try `state.` for `instrument` and `hitCount`, then `state.instrument.` for `play`.
+
+Choose the example as Run file and press **Run** to initialize the built-in YM2612 and play C, E, G. After playback, press **Apply**: the saved MIDI output is reused and the evaluation count increases. Edit the notes and Apply again to keep the initialization. Console prints `Initialized pg.context.` only once and `Evaluation count:` on every evaluation. **Run** starts fresh at count 1. This state does not persist across Stop or app restarts. JSDoc provides editor types, not runtime validation.

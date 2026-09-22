@@ -16,6 +16,8 @@ export function createFileEditor(monaco, container, onChange) {
   const editor = monaco.editor.create(container, {
     model: null, theme: 'vs-dark', automaticLayout: true,
     minimap: {enabled: false}, fontSize: 14, tabSize: 2,
+    // Suggest/hover widgets may extend beyond the workspace's clipped edges.
+    fixedOverflowWidgets: true,
     scrollBeyondLastLine: false, ariaLabel: 'JavaScript editor',
     quickSuggestions: {other: true, comments: false, strings: true},
   });

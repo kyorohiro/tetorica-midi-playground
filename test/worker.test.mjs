@@ -335,3 +335,39 @@ test('Apply preserves context and pg.context identity',async()=>{
   }catch(e){fail(e);}});
  });}finally{await w.terminate();}
 });
+
+test('context init example reuses initialization on Apply and resets on Run',async()=>{
+ const {bundledExamples}=await import('../ui/example-files.js');
+ const {readFile}=await import('node:fs/promises');
+ const path='/examples/10_context_init.js',code=bundledExamples[path];
+ assert.equal(code,await readFile(new URL('../ui'+path,import.meta.url),'utf8'));
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
+ const logs=[],chips=[],outputs=[],notes=[];
+ let evaluations=0;
+ try{await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('Context example timeout')),4000);
+  const fail=e=>{clearTimeout(timer);reject(e);};
+  w.on('error',fail);
+  w.on('message',m=>{try{
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,path,code});
+   if(m.type==='enable-chip'){chips.push(m.payload.chip);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='output'){outputs.push(m.payload);w.postMessage({type:'reply',id:m.id,value:1});}
+   if(m.type==='note'){notes.push(m.payload.note);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='log')logs.push(m.text);
+   if(m.type==='error')throw Error(m.text);
+   if(m.type==='done'){
+    evaluations++;
+    if(evaluations===1)w.postMessage({type:'update',path,code:code.replace('["C4", "E4", "G4"]','["D4", "F4", "A4"]')});
+    else if(evaluations===2){
+     assert.equal(chips.length,1);assert.equal(outputs.length,1);
+     w.postMessage({type:'run',bpm:120,path,code});
+    }else{clearTimeout(timer);resolve();}
+   }
+  }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+ assert.deepEqual(chips,['ym2612','ym2612']);
+ assert.equal(outputs.length,2);
+ assert.ok(outputs.every(output=>output.name==='tetorica-ym2612'));
+ assert.deepEqual(notes,[60,64,67,62,65,69,60,64,67]);
+ assert.deepEqual(logs,['Initialized pg.context.','Evaluation count: 1','Evaluation count: 2','Initialized pg.context.','Evaluation count: 1']);
+});
