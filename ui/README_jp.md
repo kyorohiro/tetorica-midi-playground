@@ -66,6 +66,12 @@ GarageBandの仮想入力がある場合、この設定は不要です。
 「Export file」で別ファイルにバックアップできます。
 「Import」でJavaScriptファイルを追加できます。自動実行はしません。
 
+**Menu → Export project**でファイル名を入力し、`my-project.midi.cassette.zip`のような名前で保存できます。拡張子は自動で付きます。最後に使った名前は次回も候補になります。FILES内のコード・ライブラリ・メモをフォルダ構造ごとZIPに保存します。Run file、開いているファイル、BPM、Beat clockも含まれます。**Menu → Import project**でZIPを選ぶと、ファイル数・Run file・BPMを確認できます。必要なら**Export current project**でバックアップしてから、**Replace project**で置き換えます。キャンセルすれば変更されません。読み込み時は演奏を停止し、自動実行しません。復元したファイルと設定はアプリ再起動後も保持されます。
+
+**Menu → New Project**で、現在のコードを整理して最初から始められます。確認後は既定のleadループを含む`/index.js`と同梱examples・libに戻り、BPM 120・Internal clockになります。演奏と実行中の`context`は終了し、古いファイルやUndo履歴は残りません。新しい状態は再起動後も保持されます。確認画面から現在のプロジェクトをExportしてから作成することもできます。MIDI接続・割り当てや音源設定は引き続き機器側の設定として保持されます。単体ファイルの保存は**Menu → Export file**です。
+
+ZIPはMIDI Playground専用のプロジェクト形式です。YM2612 Playgroundの音色・サンプル入りカセットとの直接互換ではありません。同梱の読取専用ガイドはアプリ側から再生成します。MIDI機器の接続・出力割り当て、音源・Mixer設定、実行中の`context`は含みません。ZIP・展開後それぞれ16 MiB、メタデータを含め1024ファイルまでです。
+
 ## 音が鳴らないとき
 
 - GarageBandを開いてからRefresh ports。IACを使う場合は「装置はオンライン」を確認。

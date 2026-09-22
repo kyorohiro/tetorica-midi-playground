@@ -86,3 +86,19 @@ test('import paths are not offered in comments, other strings or member calls',(
   assert.ok(!importCompletion(source).result().suggestions.some(s=>s.kind===17),source);
  }
 });
+
+test('project replacement drops old models and undo state before opening imported files',()=>{
+ let active,callback;const models=[],changes=[];
+ const editor={onDidChangeModelContent(fn){callback=fn;return {dispose(){}};},setModel(model){active=model;callback();},getValue(){return active?.text;},saveViewState:()=>({old:true}),restoreViewState(){assert.fail('restored old project view');},updateOptions(){},dispose(){}};
+ const monaco={Uri:{from:value=>value},editor:{create:()=>editor,createModel(text,language,uri){const model={text,uri,dispose(){this.disposed=true;}};models.push(model);return model;}}};
+ const adapter=createFileEditor(monaco,{},(...args)=>changes.push(args));
+ adapter.syncFiles({'/index.js':'old','/removed.js':'old module'});
+ adapter.open('/index.js','old',false);
+ changes.length=0;
+ adapter.replaceFiles({'/index.js':'imported','/lib/new.js':'new module'});
+ assert.ok(models.slice(0,2).every(model=>model.disposed));
+ assert.deepEqual(changes,[]);
+ adapter.open('/index.js','imported',false);
+ assert.equal(active.text,'imported');
+ assert.deepEqual(changes,[['/index.js','imported']]);
+});

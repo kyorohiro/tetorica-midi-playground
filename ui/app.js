@@ -1,3 +1,4 @@
+import {exportProject,importProject,MAX_PROJECT_BYTES} from './project-cassette.js';
 import {mergeExamples} from './example-migrations.js';
 import {mountOutputMappings} from './output-mappings.js';
 import {bundledExamples} from './example-files.js';
@@ -7,7 +8,7 @@ import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from '.
 import {keyData} from './keyboard.js';
 import {connectionStatus} from './connection.js';
 import {leadExample} from './examples.js';
-import {ensureEntry,runSource} from './project.js';
+import {ensureEntry,runSource,createNewProject,projectFileName} from './project.js';
 import {withGuide,canRun,isGuide} from './guide.js';
 import {createPlaygroundUi} from './shared/playground_ui.js';
 import {renderFileTree} from './shared/playground_file_tree.js';
@@ -17,29 +18,114 @@ let auditionKeyboard=null;
 const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
+const projectStorageKey='midi-project-v1';
+let savedProject=null;
+try{savedProject=JSON.parse(localStorage.getItem(projectStorageKey));}catch{}
+let projectName='my-project';
+try{projectName=projectFileName(savedProject?.name??'my-project').replace(/\.midi\.cassette\.zip$/i,'');}catch{}
 let files={};
-try{const stored=JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
-files=mergeExamples(files,bundledExamples);
-files=withGuide(ensureEntry(files, leadExample));
-let runPath="/index.js";
+try{const stored=savedProject?.files??JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
+let exactProjectFiles=savedProject?.exactFiles===true;
+if(!exactProjectFiles)files=mergeExamples(files,bundledExamples);
+files=withGuide(exactProjectFiles?files:ensureEntry(files, leadExample));
+let runPath=canRun(savedProject?.runPath)&&Object.hasOwn(files,savedProject.runPath)?savedProject.runPath:Object.keys(files).find(canRun)??'/index.js';
+if(!savedProject)runPath='/index.js';
+if(Number.isFinite(savedProject?.bpm)&&savedProject.bpm>=1&&savedProject.bpm<=999)$('bpm').value=savedProject.bpm;
+if(['internal','external'].includes(savedProject?.clockMode))$('clockMode').value=savedProject.clockMode;
 function refreshRunFiles(){
   $('runFile').replaceChildren(...Object.keys(files).filter(canRun).map(path=>{const option=document.createElement('option');option.value=path;option.textContent=path;return option;}));
   $('runFile').value=runPath;
 }
 refreshRunFiles();
-$('runFile').onchange=()=>{runPath=$('runFile').value;};
+$('runFile').onchange=()=>{runPath=$('runFile').value;persist();};
+$('bpm').addEventListener('change',()=>persist());
+$('clockMode').addEventListener('change',()=>persist());
 let codeEditor=null;
-let selected="/README.md";const expanded=new Map();
-function persist(){try{localStorage.setItem('midi-files',JSON.stringify(files));}catch{ui.setStatus('Local save failed. Use Export JS to save your code.');}}
-function openFile(path){selected=path;codeEditor?.open(path,files[path],isGuide(path));$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});}
+let selected=Object.hasOwn(files,savedProject?.selected)?savedProject.selected:'/README.md';const expanded=new Map();
+function projectSnapshot(){return {files:Object.fromEntries(Object.entries(files).filter(([path])=>!isGuide(path))),runPath,selected,bpm:Number($('bpm').value),clockMode:$('clockMode').value,exactFiles:exactProjectFiles,name:projectName};}
+function persist(){try{localStorage.setItem(projectStorageKey,JSON.stringify(projectSnapshot()));}catch{ui.setStatus('Local save failed. Use Export project to save your code.');}}
+function openFile(path){selected=path;codeEditor?.open(path,files[path],isGuide(path));$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});persist();}
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;files[selected]=$('editor').value;persist();};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
 $('newFile').onclick=()=>{let n=1;while(files[`/untitled-${n}.js`]!==undefined)n++;const path=`/untitled-${n}.js`;files[path]='// MIDI Playground\n';persist();openFile(path);};
 $('importFile').onclick=()=>$('fileInput').click();
 $('fileInput').onchange=()=>run(async()=>{const file=$('fileInput').files[0];if(!file)return;if(file.size>1000000)throw new Error('File exceeds 1 MB');let path='/'+file.name;let n=1;while(files[path]!==undefined)path=`/import-${n++}-${file.name}`;files[path]=await file.text();persist();openFile(path);$('fileInput').value='';});
-$('saveFile').onclick=()=>{const url=URL.createObjectURL(new Blob([files[selected]],{type:canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-$('expandButton').onclick=()=>{const expanded=document.body.classList.toggle('expanded');$('expandButton').setAttribute('aria-pressed',String(expanded));$('expandButton').textContent=expanded?'Collapse':'Expand';};
+$('saveFile').onclick=()=>{$('mainMenu').open=false;const url=URL.createObjectURL(new Blob([files[selected]],{type:canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+function downloadProject(fileName) {
+  const bytes=exportProject(projectSnapshot());
+  const url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));
+  const a=document.createElement('a');a.href=url;
+  a.download=fileName;
+  a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function showExportProject(){
+  $('mainMenu').open=false;$('projectExportName').value=projectName;
+  $('projectExportError').textContent='';$('projectExportDialog').showModal();
+  $('projectExportName').focus();$('projectExportName').select();
+}
+$('exportProject').onclick=showExportProject;
+$('exportBeforeImport').onclick=showExportProject;
+$('exportBeforeNew').onclick=showExportProject;
+$('cancelProjectExport').onclick=()=>$('projectExportDialog').close();
+$('projectExportForm').onsubmit=event=>{
+  event.preventDefault();
+  try {
+    const filename=projectFileName($('projectExportName').value);
+    downloadProject(filename);projectName=filename.replace(/\.midi\.cassette\.zip$/i,'');persist();
+    $('projectExportDialog').close();
+  }catch(error){$('projectExportError').textContent=String(error.message??error);}
+};
+// Match the original Playground's dropdown; keep it accessible in expanded mode too.
+document.addEventListener('click',event=>{if(!$('mainMenu').contains(event.target))$('mainMenu').open=false;});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('mainMenu').open){$('mainMenu').open=false;$('mainMenu').querySelector('summary').focus();}});
+async function replaceProject(project,name){
+  await stop();
+  localStorage.setItem(projectStorageKey,JSON.stringify({...project,exactFiles:true,name}));
+  projectName=name;exactProjectFiles=true;files=withGuide(project.files);runPath=project.runPath;
+  $('bpm').value=project.bpm;$('clockMode').value=project.clockMode;
+  expanded.clear();codeEditor?.replaceFiles(files);
+  openFile(project.selected);ui.clearConsole();ui.setBottomTab('code');
+}
+$('newProject').onclick=()=>{$('mainMenu').open=false;$('newProjectError').textContent='';$('newProjectDialog').showModal();};
+$('cancelNewProject').onclick=()=>$('newProjectDialog').close();
+$('newProjectDialog').addEventListener('cancel',event=>{if($('confirmNewProject').disabled)event.preventDefault();});
+$('confirmNewProject').onclick=async()=>{
+  $('confirmNewProject').disabled=true;$('cancelNewProject').disabled=true;$('exportBeforeNew').disabled=true;
+  try {
+    await replaceProject(createNewProject(bundledExamples),'my-project');
+    $('newProjectDialog').close();ui.setStatus('New project ready.');
+  }catch(error){$('newProjectError').textContent=String(error.message??error);}
+  finally{$('confirmNewProject').disabled=false;$('cancelNewProject').disabled=false;$('exportBeforeNew').disabled=false;}
+};
+let pendingProject=null,pendingProjectName='my-project';
+$('importProject').onclick=()=>{$('mainMenu').open=false;$('projectInput').click();};
+$('projectInput').onchange=()=>run(async()=>{
+  const file=$('projectInput').files[0];if(!file)return;
+  try {
+    if(file.size>MAX_PROJECT_BYTES)throw Error('Project ZIP exceeds 16 MiB');
+    pendingProject=importProject(new Uint8Array(await file.arrayBuffer()));
+    try{pendingProjectName=projectFileName(file.name).replace(/\.midi\.cassette\.zip$/i,'');}catch{pendingProjectName='my-project';}
+    $('projectImportError').textContent='';
+    $('projectImportSummary').textContent=`${file.name}: ${Object.keys(pendingProject.files).length} files · Run file: ${pendingProject.runPath} · BPM: ${pendingProject.bpm} · ${pendingProject.clockMode} clock`;
+    $('projectImportDialog').showModal();
+  } finally {$('projectInput').value='';}
+});
+$('cancelProjectImport').onclick=()=>{$('projectImportDialog').close();};
+$('projectImportDialog').addEventListener('close',()=>{pendingProject=null;});
+$('projectImportDialog').addEventListener('cancel',event=>{if($('confirmProjectImport').disabled)event.preventDefault();});
+$('confirmProjectImport').onclick=()=>run(async()=>{
+  if(!pendingProject)return;
+  const project=pendingProject;
+  $('confirmProjectImport').disabled=true;$('cancelProjectImport').disabled=true;
+  try {
+    await replaceProject(project,pendingProjectName);
+    $('projectImportDialog').close();
+    ui.setStatus('Project imported. Press Run to play.');
+  } catch(error){$('projectImportError').textContent=String(error.message??error);}
+  finally {$('confirmProjectImport').disabled=false;$('cancelProjectImport').disabled=false;}
+});
+$('expandButton').onclick=()=>{const expanded=document.body.classList.toggle('expanded');$('mainMenu').open=false;if(expanded)$('runButton').before($('mainMenu'));else $('mainMenuHome').before($('mainMenu'));$('expandButton').setAttribute('aria-pressed',String(expanded));$('expandButton').textContent=expanded?'Collapse':'Expand';};
 $('midiSettings').onclick=()=>ui.setBottomTab('operator');
 $('midiConnection').onclick=()=>ui.setBottomTab('operator');
 function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;$('scriptOutputStatus').textContent=`Script outputs: ${snapshot?.script_output_count??0} additional connection(s)`;}
@@ -105,7 +191,7 @@ async function start(){
 $('clockMode').onchange=()=>run(stop);
 $('applyButton').onclick=()=>run(async()=>{if(!worker)throw new Error('Press Run first');worker.postMessage({type:'update',code:runSource(files,runPath),path:runPath,files:{...files}});ui.setStatus('Applying '+runPath);});
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'&&!document.querySelector('dialog[open]')){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
 async function refresh(){const ports=await invoke('ports');outputMappings.refresh(ports.output);for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 const outputMappings=mountOutputMappings($('outputMappings'),{storage:localStorage,beforeChange:stop,onError:error=>{ui.logLine(String(error));ui.setStatus(String(error));}});
 $('refresh').onclick=()=>run(refresh);

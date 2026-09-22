@@ -14,3 +14,9 @@ Monaco Editor 0.52.2 (MIT) is copied from the locked npm dependency into the ign
 # Acorn
 
 Acorn (MIT) parses inline liveLoop callbacks before lexical helper binding. Version is pinned in package-lock.json; scripts/prepare.mjs copies acorn.mjs and acorn.LICENSE from the installed dependency. Upstream: https://github.com/acornjs/acorn
+
+# fflate
+
+`fflate.js` and `fflate-LICENSE` are copied from the original YM2612 Playground's
+`docs/playground/vendor/` distribution. MIT license; upstream: https://github.com/101arrowz/fflate
+Used to export and import project ZIP cassettes locally.

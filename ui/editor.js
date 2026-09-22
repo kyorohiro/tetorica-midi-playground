@@ -25,6 +25,14 @@ export function createFileEditor(monaco, container, onChange) {
     if (current && !current.readOnly) onChange(current.path, editor.getValue());
   });
   return {
+    replaceFiles(files) {
+      // Detach before disposal so replacement never saves stale text into the new project.
+      current = null;
+      editor.setModel(null);
+      for (const model of models.values()) model.dispose();
+      models.clear(); views.clear();
+      this.syncFiles(files);
+    },
     syncFiles(files) {
       for (const [path, text] of Object.entries(files)) {
         if (/\.m?js$/i.test(path) && !models.has(path)) {
