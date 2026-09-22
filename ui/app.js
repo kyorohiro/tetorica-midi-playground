@@ -130,7 +130,7 @@ $('midiSettings').onclick=()=>ui.setBottomTab('operator');
 $('midiConnection').onclick=()=>ui.setBottomTab('operator');
 function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;$('scriptOutputStatus').textContent=`Script outputs: ${snapshot?.script_output_count??0} additional connection(s)`;}
 $('clearConsole').onclick=()=>ui.clearConsole();
-async function run(fn){try{await fn();}catch(e){ui.setStatus(String(e));ui.logLine(String(e));}}
+async function run(fn){try{await fn();}catch(e){ui.setStatus('Error — see Console: '+String(e));ui.logLine(String(e));}}
 let worker=null,epoch=0,activeRunId=null,inputGeneration=0;
 const pressedKeys=new Map();
 const keyboardPad=$('keyboardInput');
@@ -180,12 +180,12 @@ async function start(){
     }else if(data.type==='release'){
       await run(()=>enqueueMidi(()=>invoke('release_loop_notes',{runId,owner:data.owner})));
     }else if(data.type==='log'){if(logs++<1000)ui.logLine(String(data.text).slice(0,4000));}
-    else if(data.type==='error'){await run(stop);ui.logLine(data.text);ui.setStatus(data.text);ui.setBottomTab('console');}
+    else if(data.type==='error'){await run(stop);ui.logLine(data.text);ui.setStatus('Error — see Console: '+data.text);}
     else if(data.type==='done'){ui.setRuntimeState('Finished');ui.setStatus('Finished. Press Stop to release any remaining notes.');}
     else if(data.type==='listening'){ui.setRuntimeState('Listening');ui.setStatus('Click Keyboard input, then press your script’s keys.');}
     else if(data.type==='looping'){ui.setRuntimeState('Looping');}
   };
-  current.onerror=e=>run(async()=>{await stop();ui.setStatus(e.message);ui.logLine(e.message);});
+  current.onerror=e=>run(async()=>{await stop();ui.setStatus('Error — see Console: '+e.message);ui.logLine(e.message);});
   current.postMessage({type:'run',code,bpm,runId,externalClock,path:target,files:{...files},outputMappings:outputMappings.snapshot()});
 }
 $('clockMode').onchange=()=>run(stop);
