@@ -1,3 +1,4 @@
+import {isBinaryFile,binaryFile,fileBytes,filePreview} from './project-assets.js';
 import {exportProject,importProject,MAX_PROJECT_BYTES} from './project-cassette.js';
 import {mergeExamples} from './example-migrations.js';
 import {mountOutputMappings} from './output-mappings.js';
@@ -24,7 +25,7 @@ try{savedProject=JSON.parse(localStorage.getItem(projectStorageKey));}catch{}
 let projectName='my-project';
 try{projectName=projectFileName(savedProject?.name??'my-project').replace(/\.midi\.cassette\.zip$/i,'');}catch{}
 let files={};
-try{const stored=savedProject?.files??JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&typeof v==='string');if(entries.length)files=Object.fromEntries(entries);}}catch{}
+try{const stored=savedProject?.files??JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&(typeof v==='string'||(isBinaryFile(v)&&!canRun(k))));if(entries.length)files=Object.fromEntries(entries);}}catch{}
 let exactProjectFiles=savedProject?.exactFiles===true;
 if(!exactProjectFiles)files=mergeExamples(files,bundledExamples);
 files=withGuide(exactProjectFiles?files:ensureEntry(files, leadExample));
@@ -44,14 +45,14 @@ let codeEditor=null;
 let selected=Object.hasOwn(files,savedProject?.selected)?savedProject.selected:'/README.md';const expanded=new Map();
 function projectSnapshot(){return {files:Object.fromEntries(Object.entries(files).filter(([path])=>!isGuide(path))),runPath,selected,bpm:Number($('bpm').value),clockMode:$('clockMode').value,exactFiles:exactProjectFiles,name:projectName};}
 function persist(){try{localStorage.setItem(projectStorageKey,JSON.stringify(projectSnapshot()));}catch{ui.setStatus('Local save failed. Use Export project to save your code.');}}
-function openFile(path){selected=path;codeEditor?.open(path,files[path],isGuide(path));$('editor').value=files[path];$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});persist();}
+function openFile(path){selected=path;codeEditor?.open(path,filePreview(files[path]),isGuide(path)||isBinaryFile(files[path]));$('editor').value=filePreview(files[path]);$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path)||isBinaryFile(files[path]);refreshRunFiles();renderFileTree($('fileExplorerList'),Object.keys(files).map(path=>({path})),{selectedPath:selected,expanded,onOpen:openFile});persist();}
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;files[selected]=$('editor').value;persist();};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
 $('newFile').onclick=()=>{let n=1;while(files[`/untitled-${n}.js`]!==undefined)n++;const path=`/untitled-${n}.js`;files[path]='// MIDI Playground\n';persist();openFile(path);};
 $('importFile').onclick=()=>$('fileInput').click();
-$('fileInput').onchange=()=>run(async()=>{const file=$('fileInput').files[0];if(!file)return;if(file.size>1000000)throw new Error('File exceeds 1 MB');let path='/'+file.name;let n=1;while(files[path]!==undefined)path=`/import-${n++}-${file.name}`;files[path]=await file.text();persist();openFile(path);$('fileInput').value='';});
-$('saveFile').onclick=()=>{$('mainMenu').open=false;const url=URL.createObjectURL(new Blob([files[selected]],{type:canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('fileInput').onchange=()=>run(async()=>{const file=$('fileInput').files[0];if(!file)return;if(file.size>1000000)throw new Error('File exceeds 1 MB');let path='/'+file.name;let n=1;while(files[path]!==undefined)path=`/import-${n++}-${file.name}`;files[path]=/\.(tfi|vgi)$/i.test(path)?binaryFile(new Uint8Array(await file.arrayBuffer())):await file.text();persist();openFile(path);$('fileInput').value='';});
+$('saveFile').onclick=()=>{$('mainMenu').open=false;const url=URL.createObjectURL(new Blob([fileBytes(files[selected])],{type:isBinaryFile(files[selected])?'application/octet-stream':canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 function downloadProject(fileName) {
   const bytes=exportProject(projectSnapshot());
   const url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));
@@ -244,7 +245,7 @@ loadMonaco().then(monaco=>{
   try {
     codeEditor=createFileEditor(monaco,container,(path,text)=>{files[path]=text;persist();});
     codeEditor.syncFiles(files);
-    codeEditor.open(selected,files[selected],isGuide(selected));
+    codeEditor.open(selected,filePreview(files[selected]),isGuide(selected)||isBinaryFile(files[selected]));
     $('editor').hidden=true;
   } catch(error) {container.remove();codeEditor=null;throw error;}
 }).catch(error=>ui.logLine(String(error)));

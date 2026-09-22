@@ -393,3 +393,25 @@ test('low-level globals, pg and explicit loop helpers use the Worker MIDI transp
  assert.deepEqual(scoped.map(m=>m.bytes),[[0x90,64,90],[0x90,67,90]]);
  assert.deepEqual(scoped.map(m=>m.owner),[1,2]);assert.deepEqual(result.releases,[1,2]);
 });
+
+test('Worker loads imported binary voice relative to Run file and sends it before the routed note',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const {binaryFile}=await import('../ui/project-assets.js');
+ const {voiceSysEx}=await import('../ui/ym2612-voice.js');
+ const preset=JSON.parse(await readFile(new URL('./fixtures/fm2612-bell.json',import.meta.url)));
+ const files={'/voices/bell.tfi':binaryFile(await readFile(new URL('./fixtures/fm2612-bell.tfi',import.meta.url)))};
+ const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));const events=[];
+ try {await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(Error('Voice worker timeout')),3000);
+   const fail=e=>{clearTimeout(timer);reject(e);};w.on('error',fail);
+   w.on('message',m=>{try{
+     if(m.type==='ready')w.postMessage({type:'run',bpm:120,path:'/examples/main.js',files,code:'const lead=midi.output("tetorica-ym2612",{});await lead.loadVoice("../voices/bell.tfi");await lead.play("C4",{duration:0.002});'});
+     if(['output','midi','note'].includes(m.type)){events.push(m);w.postMessage({type:'reply',id:m.id,value:7});}
+     if(m.type==='error')throw Error(m.text);
+     if(m.type==='done'){clearTimeout(timer);resolve();}
+   }catch(e){fail(e);}});
+ });}finally{await w.terminate();}
+ assert.deepEqual(events.map(e=>e.type),['output','midi','note']);
+ assert.deepEqual(events[1].payload,{route:7,tracked:false,bytes:voiceSysEx(preset,null)});
+ assert.equal(events[2].payload.route,7);assert.equal(events[2].payload.channel,1);
+});

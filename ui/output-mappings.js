@@ -29,7 +29,7 @@ export function createMappingStore(storage){
 }
 export function mountOutputMappings(container,{storage,beforeChange,onError}){
   const store=createMappingStore(storage);let ports=[],busy=false;
-  container.innerHTML='<h3>Script output assignments</h3><p>Choose destinations for MIDI_OUTPUT_01–04. Channel defaults to 1 in code. Changing an assignment stops playback; press Run again. Internal destinations must be enabled in code or MIDI settings.</p>';
+  container.innerHTML='<h3>Script output assignments</h3><p>Choose destinations for MIDI_OUTPUT_01–04. Notes default to channel 1. YM2612 without a channel applies setVoice to all channels. Changing an assignment stops playback; press Run again. Internal destinations must be enabled in code or MIDI settings.</p>';
   const selects=slotNames.map(slot=>{
     const label=document.createElement('label');label.textContent=slot+' ';
     const select=document.createElement('select');label.append(select);container.append(label);

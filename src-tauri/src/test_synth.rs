@@ -11,10 +11,11 @@ struct Event {
     port: usize,
     bytes: [u8; 3],
     len: usize,
+    patch: Option<(u8,FmPatch)>,
 }
 struct Shared {
     queue: ArrayQueue<Event>,
-    patches: ArrayQueue<(u8, FmPatch)>,
+    bank: Arc<Mutex<[FmPatch;16]>>,
     panic: AtomicBool,
     error: AtomicBool,
     volume: [AtomicU32; 2],
@@ -26,7 +27,7 @@ impl Default for Shared {
     fn default() -> Self {
         Self {
             queue: ArrayQueue::new(2048),
-            patches: ArrayQueue::new(64),
+            bank: Arc::new(Mutex::new([FmPatch::default();16])),
             panic: AtomicBool::new(false),
             error: AtomicBool::new(false),
             volume: std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits())),
@@ -37,7 +38,19 @@ impl Default for Shared {
     }
 }
 impl Shared {
+    fn enqueue_patch(&self, channel:u8, patch:FmPatch)->Result<(),String> {
+        let mut bank=self.bank.lock().unwrap();
+        self.queue.push(Event {port:0,bytes:[0;3],len:0,patch:Some((channel,patch))}).map_err(|_|"FM update queue full; retry")?;
+        if channel==0 {*bank=[patch;16];}else{bank[(channel-1) as usize]=patch;}
+        Ok(())
+    }
     fn receive(&self, port: usize, bytes: &[u8]) {
+        if port==0 && bytes.first()==Some(&0xf0) {
+            if let Some((ch,patch))=crate::voice_sysex::decode(bytes) {
+                if self.enqueue_patch(ch,patch).is_err(){self.error.store(true,Ordering::Relaxed);self.panic.store(true,Ordering::Release);}
+            }
+            return;
+        }
         let valid=match bytes.first().map(|b|b&0xf0) {
             Some(0xc0|0xd0)=>bytes.len()==2,
             Some(0x80|0x90|0xa0|0xb0|0xe0)=>bytes.len()==3,
@@ -49,7 +62,7 @@ impl Shared {
                 .push(Event {
                     port,
                     bytes: [bytes[0], bytes[1], *bytes.get(2).unwrap_or(&0)],
-                    len:bytes.len(),
+                    len:bytes.len(),patch:None,
                 })
                 .is_err()
             {
@@ -59,22 +72,12 @@ impl Shared {
         }
     }
     fn apply(&self, mixer: &mut Mixer) {
-        // Bounded copy-only updates before MIDI; no lock or allocation in audio callback.
-        for _ in 0..64 {
-            let Some((channel, patch)) = self.patches.pop() else {
-                break;
-            };
-            if let Instrument::Ym2612(s) = &mut mixer.synths[0] {
-                let _ = s.set_patch(channel, patch);
-            }
-        }
-
+        // MIDI and voice updates preserve their receive order; no lock/allocation here.
         if self.panic.swap(false, Ordering::AcqRel) {
             // Bounded drain even if MIDI producers keep sending.
             for _ in 0..2048 {
-                if self.queue.pop().is_none() {
-                    break;
-                }
+                let Some(e)=self.queue.pop() else {break;};
+                Self::apply_patch(e,mixer);
             }
             for synth in &mut mixer.synths {
                 synth.panic();
@@ -84,7 +87,8 @@ impl Shared {
                 let Some(e) = self.queue.pop() else {
                     break;
                 };
-                if e.port == 2 {
+                if e.patch.is_some(){Self::apply_patch(e,mixer);}
+                else if e.port == 2 {
                     for synth in &mut mixer.synths {
                         synth.panic();
                     }
@@ -94,6 +98,13 @@ impl Shared {
             }
         }
     }
+    fn apply_patch(event:Event,mixer:&mut Mixer){
+        if let Some((channel,patch))=event.patch {if let Instrument::Ym2612(s)=&mut mixer.synths[0] {
+            if channel==0 {for ch in 1..=16 {let _=s.set_patch(ch,patch);}}
+            else {let _=s.set_patch(channel,patch);}
+        }}
+    }
+
 }
 struct Running {
     shared: Arc<Shared>,
@@ -109,7 +120,7 @@ impl Drop for Running {
     }
 }
 #[derive(Default)]
-pub struct Rack(Mutex<Option<Running>>, Mutex<[FmPatch; 16]>);
+pub struct Rack(Mutex<Option<Running>>, Arc<Mutex<[FmPatch; 16]>>);
 #[derive(Serialize)]
 pub struct Status {
     pub enabled: bool,
@@ -126,14 +137,8 @@ impl Rack {
             return Err("MIDI channel must be 1–16".into());
         }
         let guard = self.0.lock().unwrap();
-        let mut bank = self.1.lock().unwrap();
-        if let Some(r) = guard.as_ref() {
-            r.shared
-                .patches
-                .push((channel, patch))
-                .map_err(|_| "FM update queue full; retry Apply")?;
-        }
-        bank[(channel - 1) as usize] = patch;
+        if let Some(r)=guard.as_ref(){r.shared.enqueue_patch(channel,patch)?;}
+        else {self.1.lock().unwrap()[(channel-1) as usize]=patch;}
         Ok(())
     }
 
@@ -144,7 +149,7 @@ impl Rack {
                 .push(Event {
                     port: 2,
                     bytes: [0; 3],
-                    len:0,
+                    len:0,patch:None,
                 })
                 .is_err()
             {
@@ -201,9 +206,9 @@ impl Rack {
         return Err("The native test synth currently supports macOS only".into());
         #[cfg(target_os = "macos")]
         {
-            let shared = Arc::new(Shared::default());
+            let shared = Arc::new(Shared {bank:self.1.clone(),..Shared::default()});
             for (i, patch) in self.1.lock().unwrap().iter().enumerate() {
-                let _ = shared.patches.push((i as u8 + 1, *patch));
+                let _ = shared.queue.push(Event {port:0,bytes:[0;3],len:0,patch:Some((i as u8 + 1,*patch))});
             }
             let audio_shared = shared.clone();
             let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
@@ -254,7 +259,8 @@ fn start(
     }?;
     let mut inputs = Vec::new();
     for (port, name) in ["Tetorica YM2612", "Tetorica Sega PSG"].iter().enumerate() {
-        let input = midir::MidiInput::new(name).map_err(|e| e.to_string())?;
+        let mut input = midir::MidiInput::new(name).map_err(|e| e.to_string())?;
+        input.ignore(midir::Ignore::None);
         let queue = shared.clone();
         inputs.push(
             input
@@ -335,6 +341,33 @@ pub fn synth_panic(state: tauri::State<Rack>) {
 mod tests {
     use super::*;
     #[test]
+    fn sysex_and_notes_keep_order_in_one_audio_block_and_share_bank() {
+        let shared=Shared::default();let mut actual=Mixer::new(48000).unwrap();let mut expected=Mixer::new(48000).unwrap();
+        let a=FmPatch::default();let mut b=a;b.algorithm=7;b.operators[3].tl=8;b.operators[1].ssg=14;
+        for (patch,note) in [(a,60),(b,67)] {
+            shared.receive(0,&crate::voice_sysex::encode(1,patch));shared.receive(0,&[0x90,note,100]);
+            if let Instrument::Ym2612(s)=&mut expected.synths[0]{s.set_patch(1,patch).unwrap();}
+            expected.synths[0].midi(&[0x90,note,100]);
+        }
+        shared.apply(&mut actual);
+        for _ in 0..4800 {assert_eq!(actual.sample([0.7;2],[0.0;2],0.35),expected.sample([0.7;2],[0.0;2],0.35));}
+        assert_eq!(shared.bank.lock().unwrap()[0],b);assert_eq!(shared.bank.lock().unwrap()[1],a);
+        shared.receive(0,&crate::voice_sysex::encode(0,b));assert_eq!(*shared.bank.lock().unwrap(),[b;16]);
+        shared.receive(0,&crate::voice_sysex::encode(2,a));assert_eq!(shared.bank.lock().unwrap()[1],a);
+        shared.receive(1,&crate::voice_sysex::encode(0,a));assert_eq!(shared.bank.lock().unwrap()[0],b);
+        shared.receive(0,&crate::voice_sysex::encode(0,a));assert_eq!(*shared.bank.lock().unwrap(),[a;16]);
+        shared.apply(&mut actual);
+        // The two already sounding notes retain their snapshots after all-channel updates.
+        for _ in 0..4800 {assert_eq!(actual.sample([0.7;2],[0.0;2],0.35),expected.sample([0.7;2],[0.0;2],0.35));}
+    }
+    #[test]
+    fn javascript_fixture_reaches_native_channel_bank() {
+        let shared=Shared::default();
+        shared.receive(0,include_bytes!("../../test/fixtures/fm2612-bell.syx"));
+        let bank=shared.bank.lock().unwrap();
+        for patch in bank.iter(){assert_eq!(patch.algorithm,4);assert_eq!(patch.feedback,1);assert_eq!(patch.operators[0].multi,6);assert_eq!(patch.operators[1].tl,16);assert_eq!(patch.operators[2].tl,127);}
+    }
+    #[test]
     fn queue_accepts_two_and_three_byte_channel_controls_for_both_internal_ports() {
         let shared=Shared::default();
         for port in [0,1] {for message in [vec![0xc0,30],vec![0xd0,80],vec![0xa0,60,80],vec![0xe0,0,64],vec![0xb0,7,100]] {
@@ -356,7 +389,7 @@ mod tests {
         let shared = Shared::default();
         let mut mixer = Mixer::new(48000).unwrap();
         patch.feedback = 0;
-        shared.patches.push((2, patch)).ok().unwrap();
+        shared.enqueue_patch(2, patch).unwrap();
         shared.receive(0, &[0x91, 69, 100]);
         shared.apply(&mut mixer);
         assert_eq!(mixer.synths[0].active(), 2);
@@ -388,7 +421,7 @@ mod tests {
             .push(Event {
                 port: 2,
                 bytes: [0; 3],
-                    len:0,
+                    len:0,patch:None,
             })
             .ok()
             .unwrap();

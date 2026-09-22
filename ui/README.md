@@ -337,3 +337,14 @@ Internal support:
 - CC1, channelPressure and polyPressure: 5 Hz vibrato, up to ±0.5 semitone; the greatest of those three values sets depth. Poly pressure affects the addressed note only. PSG CH10 noise has fixed pitch, so bend/vibrato do not affect it.
 - Internal Stop/Panic clears notes/controllers, preserving FM patches. FM patch edits still apply only on the next Note On.
 - Program Change is accepted by the transport but has no internal preset mapping yet; the current channel patch remains in use. SysEx and unlisted CCs have no internal implementation.
+
+
+## YM2612 voice transfer
+
+Use `await output.setVoice(preset)` with an existing FM2612 Playground Preset Object, or `await output.setVoice(bytes, {format: "tfi"})` / `{format: "vgi"}` with Uint8Array or ArrayBuffer. Import binary voices using FILES → Import, then call `await output.loadVoice("./bell.tfi")`. Paths are relative to the Run file, also inside imported functions. Binary files are read-only and survive local saves and project cassette Export/Import.
+
+An explicit channel updates only that MIDI channel. Omitting channel updates all 16 channel voices, including voices used by other handles on that output. Notes still use CH1; the native engine cycles through six free physical voices and steals the oldest when full. The same channel/pitch retriggers its existing voice. MIDI channel rotation is not used.
+
+Voice promises resolve after MIDI submission. Voice changes and subsequent notes on the same connection are applied in receive order; held notes retain their original voice. Presets replace the whole voice, rather than partially updating it. Defaults: algorithm 7, feedback 0, both pan sides enabled, AMS/PMS 0; operators use multi 1, tl 127, rr 15, other fields 0/false. `sr` overrides `d2r`. Logical operators may be zero-based arrays or one-based maps. SSG-EG, AM and AMS/PMS are preserved; global hardware LFO configuration is outside this voice API and starts disabled. Preset pan is intersected with MIDI CC10 left/right routing. Unsupported preset fields produce an error.
+
+See `examples/13_ym2612_voice.js` for JSDoc types and context-based initialization retained across Apply. Run creates fresh context. Stop and disabling/re-enabling the rack preserve the channel voice bank; closing the app resets it. Keep voice setup in project code for reproducibility.

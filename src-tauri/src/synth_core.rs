@@ -93,7 +93,7 @@ fn update_voice_controls<const N:usize>(voices:&mut [Voice;N],controls:&mut [Cha
         }
     }
 }
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperatorPatch {
     pub multi: u8,
@@ -105,19 +105,27 @@ pub struct OperatorPatch {
     pub d2r: u8,
     pub sl: u8,
     pub rr: u8,
+    #[serde(default)]
+    pub ssg: u8,
+    #[serde(default)]
+    pub am: bool,
 }
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FmPatch {
     pub algorithm: u8,
     pub feedback: u8,
+    #[serde(default = "default_b4")]
+    pub b4: u8,
     pub operators: [OperatorPatch; 4],
 }
+fn default_b4()->u8 {0xc0}
 impl Default for FmPatch {
     fn default() -> Self {
         Self {
             algorithm: 4,
             feedback: 0,
+            b4: 0xc0,
             operators: std::array::from_fn(|i| OperatorPatch {
                 multi: if i == 0 { 2 } else { 1 },
                 dt: 0,
@@ -131,7 +139,7 @@ impl Default for FmPatch {
                 d1r: 0,
                 d2r: 0,
                 sl: 0,
-                rr: 15,
+                rr: 15,ssg:0,am:false,
             }),
         }
     }
@@ -140,6 +148,7 @@ impl FmPatch {
     pub fn validate(&self) -> Result<(), String> {
         if self.algorithm > 7
             || self.feedback > 7
+            || self.b4 & 8 != 0
             || self.operators.iter().any(|o| {
                 o.multi > 15
                     || o.dt > 7
@@ -150,6 +159,7 @@ impl FmPatch {
                     || o.d2r > 31
                     || o.sl > 15
                     || o.rr > 15
+                    || o.ssg > 15
             })
         {
             return Err("FM parameter out of range".into());
@@ -170,7 +180,7 @@ impl FmPatch {
             (o.dt as u32) << 4 | o.multi as u32,
             (o.tl as u32 + attenuation as u32).min(127),
             (o.rs as u32) << 6 | o.ar as u32,
-            o.d1r as u32,
+            ((o.am as u32)<<7) | o.d1r as u32,
             o.d2r as u32,
             (o.sl as u32) << 4 | o.rr as u32,
         ]
@@ -185,6 +195,7 @@ pub struct Synth {
     patches: [FmPatch; 16],
     chip: Chip,
     voices: [Voice; 6],
+    next_voice: usize,
     serial: u64,
     ratio: f64,
     phase: f64,
@@ -206,7 +217,7 @@ impl Synth {
             modulation_phase:0.0,control_tick:0,rate,
             patches: [FmPatch::default(); 16],
             chip,
-            voices: [Voice::default(); 6],
+            voices: [Voice::default(); 6],next_voice:0,
             serial: 0,
             ratio,
             phase: 0.0,
@@ -250,7 +261,7 @@ impl Synth {
             {
                 self.chip.write(port, reg + offset + slot, value);
             }
-            self.chip.write(port, 0x90 + offset + slot, 0);
+            self.chip.write(port, 0x90 + offset + slot, patch.operators[op].ssg as u32);
         }
         self.serial += 1;
         self.voices[voice] = Voice {
@@ -285,8 +296,8 @@ impl Synth {
         let port=i/3;let offset=(i%3) as u32;
         // YM2612 has binary left/right routing, not continuous per-voice pan.
         let pan=if control.pan<43 {0x80}else if control.pan>84 {0x40}else{0xc0};
-        self.chip.write(port,0xb4+offset,pan);
         let patch=self.voice_patches[i];
+        self.chip.write(port,0xb4+offset,(pan & patch.b4 as u32 & 0xc0) | (patch.b4 as u32 & 0x37));
         let carriers=[0b1000,0b1000,0b1000,0b1000,0b1010,0b1110,0b1110,0b1111];
         let gain=control.gain();
         let attenuation=if gain<=0.0 {127}else{(-20.0*gain.log10()/0.75).round() as u32};
@@ -302,8 +313,9 @@ impl Synth {
         match bytes[0]&0xf0 {
             0x90 if bytes[2]>0=>{
                 let v=self.voices.iter().position(|v|v.held&&v.channel==ch&&v.note==note)
-                    .or_else(||self.voices.iter().position(|v|!v.held))
+                    .or_else(||(0..6).map(|n|(self.next_voice+n)%6).find(|i|!self.voices[*i].held))
                     .unwrap_or_else(||(0..6).min_by_key(|i|self.voices[*i].age).unwrap());
+                self.next_voice=(v+1)%6;
                 self.start(v,ch,note,bytes[2]);
             },
             0x80|0x90=>{for voice in &mut self.voices {if voice.channel==ch&&voice.note==note{voice.key_down=false;}}},
@@ -319,7 +331,7 @@ impl Synth {
     }
     pub fn panic(&mut self) {
         unsafe { rack_chip_reset(self.chip.0.as_ptr()) };
-        self.voices = [Voice::default(); 6];
+        self.voices = [Voice::default(); 6];self.next_voice=0;
         self.controls=[ChannelControl::default();16];self.modulation_phase=0.0;
         self.previous = [0.0; 2];
         self.next = [0.0; 2];
@@ -522,6 +534,29 @@ mod tests {
         let mut energy=[0.0;2];for _ in 0..count{let pcm=instrument.sample();for i in 0..2{energy[i]+=pcm[i]*pcm[i];}}energy
     }
     #[test]
+    fn native_voice_rotation_is_separate_from_midi_channels() {
+        let mut s=Synth::new(48000).unwrap();
+        for i in 0..12 {
+            s.midi(&[0x90,60,90]);assert!(s.voices[i%6].held);assert_eq!(s.active(),1);
+            s.midi(&[0x80,60,0]);assert_eq!(s.active(),0);
+        }
+    }
+    #[test]
+    fn ssg_and_preset_pan_reach_rendered_audio() {
+        let mut a=Synth::new(48000).unwrap();let mut b=Synth::new(48000).unwrap();
+        let mut patch=FmPatch::default();patch.algorithm=7;patch.b4=0x80;
+        for op in &mut patch.operators {op.tl=16;op.d1r=18;op.d2r=20;op.sl=4;}
+        a.set_patch(1,patch).unwrap();
+        for op in &mut patch.operators {op.ssg=14;}
+        b.set_patch(1,patch).unwrap();a.midi(&[0x90,69,100]);b.midi(&[0x90,69,100]);
+        let mut difference=0.0;
+        for _ in 0..48000 {let x=a.sample();let y=b.sample();difference+=(x[0]-y[0]).abs();}
+        assert!(difference>1.0);
+        let mut energy=[0.0;2];for _ in 0..4800 {let y=b.sample();for i in 0..2 {energy[i]+=y[i]*y[i];}}
+        // The ladder DC offset has settled after one second.
+        assert!(energy[0]>0.01 && energy[1]<energy[0]*0.001,"{energy:?}");
+    }
+    #[test]
     fn internal_pitch_bend_retunes_held_notes_by_two_semitones() {
         for psg in [false,true] {for rate in [44100,48000] {
             let mut s=test_instrument(psg,rate);s.midi(&[0x90,69,100]);
@@ -585,7 +620,7 @@ mod tests {
             d1r: 30,
             d2r: 29,
             sl: 15,
-            rr: 14,
+            rr: 14,ssg:0,am:false,
         };
         p.validate().unwrap();
         assert_eq!(p.registers(0, 1), [0x7f, 127, 0xdf, 30, 29, 0xfe]);

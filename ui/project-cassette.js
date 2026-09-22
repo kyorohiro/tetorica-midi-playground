@@ -1,3 +1,4 @@
+import {isBinaryFile,binaryFile,fileBytes} from './project-assets.js';
 import {zipSync, unzipSync, strToU8} from './vendor/fflate.js';
 import {isGuide, canRun} from './guide.js';
 
@@ -16,7 +17,8 @@ function validateProject(project) {
   const files = {};
   for (const [path, text] of Object.entries(project.files)) {
     validatePath(path);
-    if (typeof text !== 'string') throw Error('Project files must contain text: ' + path);
+    if (typeof text !== 'string' && !isBinaryFile(text)) throw Error('Invalid project file: ' + path);
+    if (canRun(path) && typeof text !== 'string') throw Error('JavaScript files must contain text: ' + path);
     if (path === '/' + MANIFEST) throw Error('metadata.json is reserved for the project manifest');
     if (!isGuide(path)) files[path] = text;
   }
@@ -32,11 +34,12 @@ export function exportProject(project) {
   const entries = Object.create(null);
   let total = 0;
   for (const [path, text] of Object.entries(files)) {
-    const data = strToU8(text);
+    const data = fileBytes(text);
     total += data.length;
     entries[path.slice(1)] = data;
   }
-  entries[MANIFEST] = strToU8(JSON.stringify({format: FORMAT, version: 1, ...settings}, null, 2));
+  const binaryPaths=Object.keys(files).filter(path=>isBinaryFile(files[path]));
+  entries[MANIFEST] = strToU8(JSON.stringify({format: FORMAT, version: binaryPaths.length?2:1, binaryPaths, ...settings}, null, 2));
   total += entries[MANIFEST].length;
   if (total > MAX_PROJECT_BYTES || Object.keys(entries).length > 1024) throw Error('Project exceeds the 16 MiB / 1024 file limit');
   const bytes = zipSync(entries, {level: 6});
@@ -58,10 +61,13 @@ export function importProject(bytes) {
   }});
   if (!Object.hasOwn(entries, MANIFEST)) throw Error('Not a MIDI Playground project: metadata.json is missing');
   const metadata = JSON.parse(decoder.decode(entries[MANIFEST]));
-  if (metadata?.format !== FORMAT || metadata.version !== 1) throw Error('Unsupported project format or version');
+  if (metadata?.format !== FORMAT || ![1,2].includes(metadata.version)) throw Error('Unsupported project format or version');
+  const binaryPaths=metadata.version===2?metadata.binaryPaths:[];
+  if(!Array.isArray(binaryPaths)||new Set(binaryPaths).size!==binaryPaths.length)throw Error('Invalid binary file list');
+  for(const path of binaryPaths){validatePath(path);if(path==='/'+MANIFEST||!Object.hasOwn(entries,path.slice(1)))throw Error('Missing binary file: '+path);}
   const files = {};
   for (const [path, data] of Object.entries(entries)) {
-    if (path !== MANIFEST) files['/' + path] = decoder.decode(data);
+    if (path !== MANIFEST) files['/' + path] = binaryPaths.includes('/'+path)?binaryFile(data):decoder.decode(data);
   }
   return validateProject({...metadata, files});
 }

@@ -3,9 +3,25 @@ type MidiNote = number | string;
 /** Durations are in beats. */
 interface MidiPlayOptions { duration?: number; velocity?: number; }
 interface MidiNoteOptions extends MidiPlayOptions { /** MIDI channel 1–16. */ channel?: number; }
+/** Existing FM2612 Playground operator fields; omitted values use a quiet default. */
+interface Ym2612Operator {
+  multi?: number; dt?: number; tl?: number; rs?: number; ar?: number;
+  d1r?: number; d2r?: number; sr?: number; rr?: number; sl?: number; ssg?: number; am?: boolean;
+}
+interface Ym2612Preset {
+  label?: string; algorithm?: number; feedback?: number;
+  pan?: {left?: boolean; right?: boolean}; ams?: number; pms?: number; b4?: number;
+  /** Logical OP1–4: array indexes 0–3 or a one-based operator map. */
+  operators?: Ym2612Operator[] | {[operator: number]: Ym2612Operator};
+}
 interface MidiOutput {
   /** Play on this handle's channel. Resolves after the duration; await is optional. */
   play(note: MidiNote, options?: MidiPlayOptions): Promise<void>;
+  /** YM2612 only. Next Note On uses this voice; held notes keep their voice. With no channel, updates all 16 channels. Resolves after MIDI submission. */
+  setVoice(preset: Ym2612Preset): Promise<void>;
+  setVoice(data: Uint8Array | ArrayBuffer, options: {format: 'tfi' | 'vgi'}): Promise<void>;
+  /** Load a FILES binary voice. Relative paths resolve from the Run file, including calls from imported modules. */
+  loadVoice(path: string): Promise<void>;
 }
 /** Opaque identifier assigned in MIDI connections. */
 interface MidiOutputSlot { readonly __midiOutputSlot: unique symbol; }
@@ -15,7 +31,7 @@ declare const MIDI_OUTPUT_02: MidiOutputSlot;
 declare const MIDI_OUTPUT_03: MidiOutputSlot;
 declare const MIDI_OUTPUT_04: MidiOutputSlot;
 declare const midi: {
-  /** Create an output handle; the connection opens on first play. Default channel: 1. */
+  /** Create an output handle; opens on first play/setVoice. YM2612 without channel: play on CH1 with native voice allocation, setVoice on all channels. Other outputs default to CH1. */
   output(destination: MidiDestination, options?: {channel?: number}): MidiOutput;
 };
 /** Enable the shared native sound rack; repeated calls preserve settings. */

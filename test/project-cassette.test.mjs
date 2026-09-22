@@ -28,16 +28,25 @@ test('invalid archives and project settings are rejected before replacement',()=
  assert.throws(()=>importProject(pack({'index.js':'log(1)'})),/metadata/);
  const entries=unzipSync(exportProject(project()));
  const meta=JSON.parse(new TextDecoder().decode(entries['metadata.json']));
- for(const patch of [{version:2},{format:'ym2612'},{runPath:'/missing.js'},{bpm:0},{clockMode:'other'}]){
+ for(const patch of [{version:3},{format:'ym2612'},{runPath:'/missing.js'},{bpm:0},{clockMode:'other'}]){
   assert.throws(()=>importProject(zipSync({...entries,'metadata.json':strToU8(JSON.stringify({...meta,...patch}))})));
  }
  for(const path of ['../escape.js','/absolute.js','lib/../escape.js','lib\\escape.js','lib//file.js']){
   assert.throws(()=>importProject(zipSync({...entries,[path]:strToU8('')})),/path/);
  }
- assert.throws(()=>exportProject({...project(),files:{'/index.js':42}}),/text/);
+ assert.throws(()=>exportProject({...project(),files:{'/index.js':42}}),/file/);
 });
 test('ZIP and expanded-size limits are enforced',()=>{
  assert.throws(()=>importProject(new Uint8Array(MAX_PROJECT_BYTES+1)),/16 MiB/);
  const bomb=zipSync({'large.js':new Uint8Array(MAX_PROJECT_BYTES+1)});
  assert.throws(()=>importProject(bomb),/Expanded/);
+});
+
+test('binary manifest rejects missing, duplicate, reserved and JavaScript binary paths',()=>{
+ const entries=unzipSync(exportProject(project()));
+ const meta=JSON.parse(new TextDecoder().decode(entries['metadata.json']));
+ for(const binaryPaths of [undefined,{},['/missing.tfi'],['/notes.md','/notes.md'],['/metadata.json'],['/index.js']]){
+  const bytes=zipSync({...entries,'metadata.json':strToU8(JSON.stringify({...meta,version:2,binaryPaths}))});
+  assert.throws(()=>importProject(bytes));
+ }
 });

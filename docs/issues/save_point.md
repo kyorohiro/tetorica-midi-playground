@@ -12,7 +12,7 @@ AIは機能追加・設計変更の前にこのファイルを読み、関連す
 ## 関連メモ
 
 - [api_next_01.md](api_next_01.md)：低レベルMIDI APIの要件と実装範囲。
-- [midi_sysex_01.md](midi_sysex_01.md)：YM2612音色のSysEx転送の実装予定仕様。Preset／TFI／VGI互換性、Note Onとの順序保証、channel省略時の音色一括適用と発音割り当ての検討、バイナリアセットの保存対応。
+- [midi_sysex_01.md](midi_sysex_01.md)：YM2612音色のSysEx転送の仕様と実装状況。Preset／TFI／VGI互換性、Note Onとの順序保証、channel省略時の音色一括適用とNativeでの発音割り当て、バイナリアセットの保存対応。
 
 - [web_interface.md](web_interface.md)：Native／Browserの差を吸収する境界、現在の実装と将来の設計案。
 

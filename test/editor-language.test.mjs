@@ -90,3 +90,10 @@ test('low-level MIDI APIs complete as globals, pg members and loop helpers',asyn
  const options=await completions('noteOff("C4",{/*here*/});');
  assert.ok(options.includes('velocity'));assert.ok(options.includes('channel'));
 });
+
+test('YM2612 voice methods and preset fields complete on MIDI handles',async()=>{
+ const members=await completions('const lead=midi.output("tetorica-ym2612",{});lead./*here*/');
+ for(const key of ['setVoice','loadVoice','play'])assert.ok(members.includes(key));
+ const fields=await completions('const lead=midi.output("tetorica-ym2612");lead.setVoice({/*here*/});');
+ for(const key of ['algorithm','feedback','operators','pan','ams','pms'])assert.ok(fields.includes(key),key);
+});

@@ -1,6 +1,27 @@
 # YM2612 voice transfer via MIDI SysEx
 
-この文書は実装予定の仕様です。以下のAPI・動作は、実装済みであることを示すものではありません。
+## 実装状況（2026-09-22）
+
+以下の要件に対して、Preset Object／TFI／VGIからの`setVoice()`、FILESの`loadVoice()`、全channelへの音色設定、順序付きNative受信、バイナリアセットの保存とカセット往復を実装しました。補完・Helper・`examples/13_ym2612_voice.js`も追加しています。
+
+* channel省略時のNote OnはMIDI CH1を使用し、Native側で6声の空きvoiceを循環して割り当てます。空きがないときは最も古いvoiceを使い、同じMIDI channel・音高は既存voiceを再発音します。MIDI channelのラウンドロビンは採用しません。
+* `setVoice()`／`loadVoice()`のPromiseはMIDIへの送信完了を表します。CoreMIDIの同じ接続で受信した音色変更と後続Note Onを一つのキューで順に適用します。音声出力完了のACKではありません。受信キューがあふれた場合はエラー状態とpanicで演奏を止めます。
+* Native側にSSG-EG、AM、B4（pan／AMS／PMS）を追加しました。音源全体のハードウェアLFO設定は音色転送に含まず、初期状態は無効です。Preset panとMIDI CC10の両方で有効な側に出力します。
+* Presetは部分更新ではなく音色全体の置き換えです。省略値はalgorithm=7、feedback=0、左右出力ON、AMS/PMS=0、operatorはmulti=1、tl=127、rr=15、その他0／falseです。`sr`は`d2r`より優先します。未対応フィールドはエラーにします。
+* 音色bankはUIとSysExで共有します。YM2612タブのReload channelでスクリプトから設定した値を取得できます。Stopと音源の無効化／再有効化では保持し、アプリ終了でリセットします。プロジェクトの再現性はコードと音色ファイルで確保します。
+* `loadVoice()`の相対パスはRun file基準です。import先の関数から呼んでも同じです。ローカル保存ではバイナリをJSON対応の値として保持し、カセットは実際のバイト列で保存します。バイナリ入りはmanifest version 2、テキストのみはversion 1を出力し、両方を読み込めます。旧版アプリはversion 2を読み込めません。
+
+### 実装したSysEx protocol v1
+
+`F0 7D 54 45 54 01 01 target 01 payload F7`（61 bytes）。`54 45 54`はTET識別子、続いてprotocol version、set voice command、target、voice layout versionです。targetは0–15（MIDI CH1–16）、127（全channel）。他の値は受け付けません。
+
+payloadは44 bytesを7-bit packします。元データ7 bytesごとに上位bitをまとめたmask byteを先頭に置き、残りは各byteの下位7bitです。最後のgroupの未使用mask bitは0です。
+
+元データはalgorithm、feedback、B4、AM bitmask（bit0=OP1）、続いて論理OP1–4それぞれの`multi, dt, tl, rs, ar, d1r, d2r, rr, sl, ssg`です。`dt`はYM2612 register表現のまま保持します。TFI/VGIとの変換は共通adapterで行います。これはtransport内部の表現で、新しい音色ファイル形式ではありません。
+
+Nativeは長さ・範囲・識別子・version・command・7-bit表現を検証し、不正／未知のメッセージを音色へ適用しません。外部音源向けのプロトコル対応は今回の対象外です。
+
+## 要件
 
 Tetorica MIDI Playground に、コードから内蔵 YM2612 の音色を指定できるAPIを追加してください。
 
@@ -71,7 +92,7 @@ APIの細部は既存設計に合わせて構いません。
 
 ### バイナリファイルの取り扱い
 
-現在のプロジェクトファイル管理はテキスト前提です。`loadVoice()`には、音色変換だけでなくバイナリアセットの対応も必要です。
+実装前のプロジェクトファイル管理はテキスト前提でした。`loadVoice()`には、音色変換だけでなくバイナリアセットの対応も必要です。
 
 * TFI/VGIをプロジェクトに取り込み、文字列へ誤変換せず元のバイト列を保持してください。
 * `loadVoice()`のパスはプロジェクト内のファイルを参照し、相対パスの解決規則は既存のモジュール・FILES設計と整合させて明記してください。
@@ -192,9 +213,9 @@ await bass.setVoice(bassPreset);
 
 MIDIの16 channelは音色やCC等を共有する単位であり、YM2612の物理的な6発音channelとは別です。全16 MIDI channelへ音色を設定しても、同時発音数が16声になるわけではありません。
 
-channel省略時にラウンドロビンで発音先を割り当てる案を検討します。ただし、ユーザー向けの「音源全体を使う／音色を一括適用する」方針と、割り当てをどの層で行うかは分けてください。MIDI channelを回す方式にするか、単一MIDI channelからNative音源側で6声を割り当てる方式にするかは実装前に決定し、ここに記録してください。和音のためだけにMIDI channelのラウンドロビンを必須とはしません。
+採用方式は単一MIDI channelからNative音源側で6声を割り当てる方式です。ユーザー向けの「音源全体を使う／音色を一括適用する」動作と、物理voiceの選択を分離します。MIDI channelを回す方式は未採用です。
 
-MIDI channelをラウンドロビンする場合は、次の事項も定義・検証してください。
+将来MIDI channelをラウンドロビンする方式へ変更する場合は、次の事項も定義・検証してください。
 
 * 対象channelと巡回順、handle間で割り当て状態を共有するか、channel固定のhandleとの併用時の動作。
 * Note Onに使用したchannelを各発音について記録し、Note Offを同じchannelへ返す。同音の重複発音、停止、キャンセル時も対応関係を保持する。
@@ -207,7 +228,7 @@ MIDI channelをラウンドロビンする場合は、次の事項も定義・�
 
 `await lead.setVoice(A)`の後に送るNote OnにはAが適用されることを保証してください。Promiseの完了が「送信完了」なのか「音源への適用完了」なのかを明記し、CoreMIDIへの送信完了だけを音声処理への適用完了とみなさないでください。
 
-現在のNative実装では音色変更とMIDIが別キューに入り、音色変更を先にまとめて処理しています。この仕組みをそのままSysExへ流用すると、同じ音声処理周期で受け取った `音色A → Note On → 音色B → Note On` が両方Bで発音する可能性があります。
+実装前のNativeでは音色変更とMIDIが別キューに入り、音色変更を先にまとめて処理していました。この仕組みをそのままSysExへ流用すると、同じ音声処理周期で受け取った `音色A → Note On → 音色B → Note On` が両方Bで発音する可能性があります。
 
 SysExによる音色変更とNote Onを同じ順序付きイベント列で処理するなど、受信順を音源への適用順まで維持してください。固定時間のsleepによる回避はしないでください。音声コールバック内でのロックや動的メモリ確保も避けてください。
 
@@ -264,7 +285,7 @@ FM2612 Playground側のPreset schemaを変更しないでください。
 
 * 既存の`web/tfi.js`、`web/vgi.js`とFM2612 PlaygroundのPreset利用箇所を調査してください。operator配列の0始まり／1始まり、およびファイル内のoperator順序を混同しないでください。既存converter同士にも扱いの差があるため、実際のPresetとAnalyzer出力を使って検証してください。
 * `dt`の符号表現、`sr`／`d2r`の別名と、省略フィールドの既定値を確認してください。
-* 現在のNative音色定義にはTFIの`ssg`やVGIの`ams`／`pms`がありません。対応に必要な音源側の拡張も作業範囲に含めてください。VGIのpanとMIDIのpan制御の関係も明記してください。
+* 実装前のNative音色定義にはTFIの`ssg`やVGIの`ams`／`pms`がありませんでした（今回追加済み）。対応に必要な音源側の拡張も作業範囲に含めてください。VGIのpanとMIDIのpan制御の関係も明記してください。
 * TFIだけでは表現できないフィールドを含むPresetを、無条件にTFIへ変換して情報を落とさないでください。対応可能な既存表現を選び、表現・再生できない音色設定は明示的にエラーにしてください。未対応フィールドを黙って捨てて「互換」と扱わないでください。
 
 VGIは既存parserとNative側の対応範囲を確認したうえで採否を決めてください。部分対応とする場合は制限を利用者に示し、完全互換と区別してください。

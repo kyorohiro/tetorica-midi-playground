@@ -1,3 +1,4 @@
+mod voice_sysex;
 mod midi_message;
 mod synth_core;
 mod test_synth;
@@ -64,6 +65,13 @@ impl Session {
             else {self.pedals.remove(&(route,channel,controller));}
         }
         error.map_or(Ok(()),Err)
+    }
+    fn routed_midi(&mut self,route:u64,run_id:u64,owner:Option<u64>,bytes:&[u8],tracked:bool)->Result<(),String>{
+        if route==0 {return self.script_midi(run_id,owner,bytes,tracked);}
+        if tracked {return Err("Routed raw MIDI must be untracked".into());}
+        if run_id!=self.run_id || (self.external_clock && (!self.external_started || !self.clock.running || self.transport_stop)) {return Err("Run was stopped".into());}
+        midi_message::validate(bytes)?;
+        self.send_to(route,bytes)
     }
     fn script_midi(&mut self, run_id:u64, owner:Option<u64>, bytes:&[u8], tracked:bool) -> Result<(),String> {
         if run_id!=self.run_id || (self.external_clock && (!self.external_started || !self.clock.running || self.transport_stop)) {
@@ -478,8 +486,8 @@ fn play_midi_note(
     s.routed_note(route.unwrap_or(0),run_id,owner,note,channel,velocity,duration_ms,duration_beats)
 }
 #[tauri::command]
-fn send_midi(run_id:u64, owner:Option<u64>, bytes:Vec<u8>, tracked:bool, state:tauri::State<AppState>) -> Result<(),String> {
-    state.session.lock().unwrap().script_midi(run_id,owner,&bytes,tracked)
+fn send_midi(run_id:u64, owner:Option<u64>, bytes:Vec<u8>, tracked:bool, route:Option<u64>, state:tauri::State<AppState>) -> Result<(),String> {
+    state.session.lock().unwrap().routed_midi(route.unwrap_or(0),run_id,owner,&bytes,tracked)
 }
 #[tauri::command]
 fn release_loop_notes(
@@ -602,6 +610,19 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn voice_sysex_uses_its_route_and_rejects_stopped_runs() {
+        let selected=Arc::new(Mutex::new(Vec::new()));let routed=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session {output:Some(Box::new(Fake(selected.clone()))),..Default::default()};
+        s.routes.insert(8,Box::new(Fake(routed.clone())));
+        let bytes=crate::voice_sysex::encode(0,synth_core::FmPatch::default());
+        s.routed_midi(8,0,None,&bytes,false).unwrap();
+        assert!(selected.lock().unwrap().is_empty());assert_eq!(routed.lock().unwrap()[0],bytes);
+        assert!(s.routed_midi(8,1,None,&bytes,false).is_err());
+        assert!(s.routed_midi(9,0,None,&bytes,false).is_err());
+        assert!(s.routed_midi(8,0,None,&bytes,true).is_err());
+        assert_eq!(routed.lock().unwrap().len(),1);
     }
     #[test]
     fn primitive_notes_hold_until_off_and_stop_and_preserve_play_deadlines() {
@@ -922,7 +943,9 @@ mod coremidi_tests {
             .find(|p| output.port_name(p).unwrap_or_default() == name)
             .expect("private port visible");
         let mut out = output.connect(&port, "Tetorica isolated sender").unwrap();
+        let voice=crate::voice_sysex::encode(0,synth_core::FmPatch::default());
         for message in [
+            voice.as_slice(),
             &[0xfa][..],
             &[0xf8][..],
             &[0x90, 60, 90][..],

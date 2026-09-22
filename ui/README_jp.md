@@ -334,3 +334,29 @@ await send(new Uint8Array([0xB0, 1, 0]));
 - CC1・channelPressure・polyPressureは5 Hzのビブラートに割り当て、最大±0.5半音。3つの値の最大値を深さに使います。polyPressureは指定音だけに適用します。PSG CH10のノイズは固定ピッチなのでベンド・ビブラートの対象外です。
 - 内蔵のStop/Panicはノートとコントローラーをリセットします。FM音色設定は保持し、音色編集は従来どおり次のNote Onから反映します。
 - Program Changeの送信はできますが、内蔵の音色番号は未割当のため現在のCH音色を維持します。SysEx・記載のないCCの内蔵受信処理は未実装です。
+
+
+## コードからYM2612の音色を指定する
+
+```js
+await enableSoundChip("ym2612");
+const lead = midi.output("tetorica-ym2612", {});
+await lead.setVoice({
+  algorithm: 7, feedback: 0,
+  operators: [
+    {tl: 127}, {tl: 127}, {tl: 127},
+    {multi: 1, tl: 16, ar: 31, rr: 15},
+  ],
+});
+await lead.play("C4", {duration: 1});
+```
+
+FM2612 PlaygroundのPreset Object、TFI/VGIの`Uint8Array`／`ArrayBuffer`を使えます。binaryには`await lead.setVoice(data, {format: "tfi"})`のように形式を指定します。`FILES → Import`で音色ファイルを取り込み、`await lead.loadVoice("./bell.tfi")`でも指定できます。相対パスはRun file基準です（importした関数から呼ぶ場合も同じ）。音色ファイルは読み取り専用のバイナリ表示になり、ローカル保存・カセットのExport／Importに含まれます。
+
+`channel`指定時はそのMIDIチャンネルだけに適用します。省略時の音色設定は同じ出力先の全16チャンネルへ反映されるので、固定チャンネルの別handleの音色も上書きします。省略時の演奏はCH1を使い、Native音源が6声を循環して割り当てます。空きがない場合は最も古いvoiceを使い、同じチャンネル・同じ音高は再発音します。
+
+`setVoice()`はMIDIへの送信完了でresolveします。同じ接続の後続Note Onより先に音色を適用し、発音中の音色は維持します。複数handleが同じチャンネルを変更する場合は送信順に共有状態を更新します。
+
+Presetは差分更新ではなく音色全体の置き換えです。省略値はalgorithm=7、feedback=0、左右出力ON、AMS/PMS=0、operatorはmulti=1、tl=127、rr=15、その他0／falseです。`sr`は`d2r`の別名で優先されます。SSG-EGとAM、AMS/PMSを保持しますが、音源全体のハードウェアLFO設定はこのAPIに含まれず、初期状態は無効です。PresetのpanとMIDI CC10の左右出力を組み合わせ、両方で有効な側に出力します。未知の音色フィールドはエラーになります。
+
+`examples/13_ym2612_voice.js`にJSDocとcontextを使った初期化例があります。Applyでは初期化状態を引き継ぎ、Runでは作り直します。

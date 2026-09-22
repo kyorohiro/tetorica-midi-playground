@@ -1,3 +1,4 @@
+import {readVoiceFile} from './project-assets.js';
 import {createMidiPrimitives} from './midi-primitives.js';
 import {outputSlots} from './output-mappings.js';
 import {createOutputApi} from './midi-output.js';
@@ -45,7 +46,8 @@ onmessage=async ({data})=>{
       await external.beat(Math.ceil(duration*24)/24);
     };
   }
-  const outputs=createOutputApi({mappings:data.outputMappings,request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
+  let voiceFiles=data.files||{},voicePath=data.path||'/index.js';
+  const outputs=createOutputApi({readVoice:path=>readVoiceFile(voiceFiles,path,voicePath),mappings:data.outputMappings,request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
   Object.assign(api,{context:{},...outputSlots,midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
@@ -73,6 +75,7 @@ onmessage=async ({data})=>{
   const pg={...api,liveLoop};
   evaluate=async(data)=>{
   evaluating=true;
+  voiceFiles=data.files||{};voicePath=data.path||'/index.js';
   try {
     if(external){postMessage({type:'waiting-clock'});await external.ready();}
     const modules=await prepareModules(data.files||{},data.code,data.path||'/index.js');
