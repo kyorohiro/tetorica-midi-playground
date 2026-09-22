@@ -198,7 +198,7 @@ Switching tabs, changing the channel/layout, leaving the window, Release notes o
 
 ## Built-in YM2612 audition (macOS trial)
 
-No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Preset file import, sustain and pitch bend are not supported yet.
+No DAW is required: open **MIDI connections**, enable **YM2612 + Sega PSG**, then choose **Tetorica YM2612** in MIDI settings. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Sustain, pitch bend and controllers are supported (see Low-level MIDI API). Preset file import is not supported yet.
 
 ## Multiple outputs and channels (trial)
 
@@ -291,3 +291,49 @@ Use `pg.` to browse the MIDI API, for example `pg.midi.output(...)`, `pg.play(..
 `examples/10_context_init.js` adapts the YM2612 Playground's `pg-context-init` example. It defines `ContextInitState` with JSDoc `@typedef` and annotates `pg.context` with `@type`. Try `state.` for `instrument` and `hitCount`, then `state.instrument.` for `play`.
 
 Choose the example as Run file and press **Run** to initialize the built-in YM2612 and play C, E, G. After playback, press **Apply**: the saved MIDI output is reused and the evaluation count increases. Edit the notes and Apply again to keep the initialization. Console prints `Initialized pg.context.` only once and `Evaluation count:` on every evaluation. **Run** starts fresh at count 1. This state does not persist across Stop or app restarts. JSDoc provides editor types, not runtime validation.
+
+## Low-level MIDI API
+
+These functions send to the MIDI output selected in MIDI settings, like global `play()`. They are also available through `pg` and loop callback helpers. Output handles returned by `midi.output()` still expose `play()` only.
+
+| API | Values and defaults |
+| --- | --- |
+| `noteOn(note, {channel, velocity})` | Note name or MIDI integer 0–127. Velocity 1–127, default 90. Held until released. |
+| `noteOff(note, {channel, velocity})` | Release velocity 0–127, default 0. |
+| `cc(controller, value, {channel})` | Integer controller/value 0–127. |
+| `programChange(program, {channel})` | Raw integer program 0–127, not 1–128. |
+| `pitchBend(value, {channel})` | -1 maps to 0, 0 to 8192, +1 to 16383. Semitone range is configured on the receiver. |
+| `channelPressure(value, {channel})` | Channel aftertouch, integer 0–127. |
+| `polyPressure(note, value, {channel})` | Per-note aftertouch, integer 0–127. |
+| `send(bytes)` | Array or Uint8Array containing one complete MIDI message. |
+
+Channels are integers 1–16, default 1. Invalid values and message lengths are rejected. Each function returns a Promise for the send acknowledgement, not the note duration. Use `await` for acknowledgement/order; fire-and-forget failures are also reported to Console. Existing `play()` still schedules its native Note Off and waits for the duration.
+
+Native tracking releases `noteOn()` notes on noteOff, Stop and Run restart. Direct parameterless inline block liveLoop callbacks bind the new helpers locally. Explicit callbacks should use their helpers, e.g. `async ({noteOn, beat}) => { ... }`, `ctx.noteOn()` or `ctx.pg.noteOn()`. Loop stop and same-name Apply replacement release owned notes. An older loop's noteOff does not release a same-pitch note now owned by another loop.
+
+Sustain (CC64) and sostenuto (CC66) enabled through `cc()` are released on Stop/restart and when their owning loop is released. Controllers affect the whole MIDI channel, including other loops sharing it. On external receivers, other CCs, programs, pitch bend and pressure are not automatically reset. Internal Stop/Panic resets controllers while preserving edited FM patches. CC120/123 clear channel-wide note tracking; CC121 clears pedal tracking.
+
+Raw `send()` supports channel messages, System Common F1/F2/F3/F6, Clock/Start/Continue/Stop/Active Sensing/Reset, and complete F0…F7 SysEx through the existing native MIDI backend. Limit: 65536 bytes per message; data bytes must be 7-bit. Running status, concatenated messages and interleaved realtime bytes are unsupported; call send separately for each message. Raw notes and pedals are not tracked or automatically cleaned up: send their release messages yourself. Sending transport/clock bytes does not change the app's own BPM or transport.
+
+```js
+await programChange(30, { channel: 1 });
+await noteOn("C4", { channel: 1, velocity: 100 });
+await pitchBend(0.5, { channel: 1 });
+await beat(0.5);
+await noteOff("C4", { channel: 1 });
+await pitchBend(0, { channel: 1 });
+await cc(1, 64, { channel: 1 });
+await send(new Uint8Array([0xB0, 1, 0]));
+```
+
+To test `examples/11_midi_pitch_bend.js` and `examples/12_midi_cc.js` internally, enable **YM2612 + Sega PSG** in MIDI connections and select **Tetorica YM2612** or **Tetorica Sega PSG** as the output. They also work with a compatible external synth.
+
+Internal support:
+- Pitch Bend: fixed ±2 semitones; affects already sounding notes without retriggering.
+- CC7 volume and CC11 expression: multiplied together, per MIDI channel.
+- CC10 pan: YM2612 uses hardware left (0–42), both (43–84), right (85–127); PSG uses per-voice software stereo pan. Mixer pan remains a separate source-wide control.
+- CC64 sustain, CC66 sostenuto, CC120 All Sound Off, CC123 All Notes Off. All Notes Off obeys pedals; All Sound Off silences immediately.
+- CC121 resets bend, modulation, pressure, expression and pedals, preserving channel volume/pan.
+- CC1, channelPressure and polyPressure: 5 Hz vibrato, up to ±0.5 semitone; the greatest of those three values sets depth. Poly pressure affects the addressed note only. PSG CH10 noise has fixed pitch, so bend/vibrato do not affect it.
+- Internal Stop/Panic clears notes/controllers, preserving FM patches. FM patch edits still apply only on the next Note On.
+- Program Change is accepted by the transport but has no internal preset mapping yet; the current channel patch remains in use. SysEx and unlisted CCs have no internal implementation.

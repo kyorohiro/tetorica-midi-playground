@@ -46,6 +46,7 @@ SegaPSG::SegaPSG(uint32_t sample_rate, uint32_t clock) :
 void SegaPSG::reset()
 {
     m_clock_accumulator = 0;
+    for (auto &pan : m_pan) pan = 0.0f;
 
     for (auto &channel : m_tone)
     {
@@ -155,6 +156,11 @@ void SegaPSG::write(uint8_t data)
     }
 }
 
+void SegaPSG::set_pan(uint32_t voice, float pan)
+{
+    if (voice < 4 && pan >= -1.0f && pan <= 1.0f) m_pan[voice] = pan;
+}
+
 void SegaPSG::generate(float *left, float *right, uint32_t frames)
 {
     // The SN76489 tone/noise generators run at input clock / 16.
@@ -170,18 +176,15 @@ void SegaPSG::generate(float *left, float *right, uint32_t frames)
             clock_generator();
         }
 
-        float mixed = 0.0f;
-
-        mixed += tone_level(0);
-        mixed += tone_level(1);
-        mixed += tone_level(2);
-        mixed += noise_level();
-
-        mixed *= OUTPUT_GAIN;
-
-        // Genesis PSG output is mono.
-        left[index] = mixed;
-        right[index] = mixed;
+        float mixed_left = 0.0f, mixed_right = 0.0f;
+        for (uint32_t voice = 0; voice < 4; ++voice) {
+            const float level = voice < 3 ? tone_level(voice) : noise_level();
+            const float pan = m_pan[voice];
+            mixed_left += level * (pan > 0.0f ? 1.0f - pan : 1.0f);
+            mixed_right += level * (pan < 0.0f ? 1.0f + pan : 1.0f);
+        }
+        left[index] = mixed_left * OUTPUT_GAIN;
+        right[index] = mixed_right * OUTPUT_GAIN;
     }
 }
 

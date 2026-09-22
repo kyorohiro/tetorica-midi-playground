@@ -24,6 +24,26 @@ declare function enableSoundChip(chip: 'ym2612' | 'sega-psg'): Promise<void>;
 declare function play(note: MidiNote, options?: MidiNoteOptions): Promise<void>;
 /** Use context.playOutput for loop ownership in imported or explicit callbacks. */
 declare function playOutput(output: MidiOutput, note: MidiNote, options?: MidiPlayOptions): Promise<void>;
+/** MIDI channels are 1–16; default is 1. */
+interface MidiChannelOptions { channel?: number; }
+interface MidiOnOptions extends MidiChannelOptions { /** Integer 1–127; default 90. */ velocity?: number; }
+interface MidiOffOptions extends MidiChannelOptions { /** Release velocity 0–127; default 0. */ velocity?: number; }
+/** Selected MIDI output. Held until noteOff, loop release or Stop; resolves when sent. */
+declare function noteOn(note: MidiNote, options?: MidiOnOptions): Promise<void>;
+/** Release a tracked note on the selected MIDI output. */
+declare function noteOff(note: MidiNote, options?: MidiOffOptions): Promise<void>;
+/** Send a control change; controller and value are integers 0–127. */
+declare function cc(controller: number, value: number, options?: MidiChannelOptions): Promise<void>;
+/** Raw program number 0–127 (not 1–128). */
+declare function programChange(program: number, options?: MidiChannelOptions): Promise<void>;
+/** -1 = 0, 0 = 8192, +1 = 16383. Range in semitones depends on the receiver. */
+declare function pitchBend(value: number, options?: MidiChannelOptions): Promise<void>;
+/** Channel aftertouch, integer 0–127. */
+declare function channelPressure(value: number, options?: MidiChannelOptions): Promise<void>;
+/** Per-note aftertouch, integer 0–127. */
+declare function polyPressure(note: MidiNote, value: number, options?: MidiChannelOptions): Promise<void>;
+/** One complete MIDI message, including system messages/SysEx; no automatic note cleanup. */
+declare function send(bytes: number[] | Uint8Array): Promise<void>;
 /** Wait in beats. */
 declare function beat(count?: number): Promise<void>;
 /** Wait for the next beat. */
@@ -54,6 +74,8 @@ interface TetoricaContext {
   context: PlaygroundContext;
   /** API namespace with this loop's timing and cancellation. */
   pg: PlaygroundAPI;
+  noteOn: typeof noteOn; noteOff: typeof noteOff; cc: typeof cc; programChange: typeof programChange;
+  pitchBend: typeof pitchBend; channelPressure: typeof channelPressure; polyPressure: typeof polyPressure; send: typeof send;
   play: typeof play; playOutput: typeof playOutput; beat: typeof beat; nextBeat: typeof nextBeat;
   cycle: typeof cycle; setBpm: typeof setBpm; choose: typeof choose; scale: typeof scale; chord: typeof chord;
   rand: typeof rand; rrange: typeof rrange; randInt: typeof randInt; lerp: typeof lerp; noteLerp: typeof noteLerp;

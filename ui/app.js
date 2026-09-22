@@ -172,9 +172,9 @@ async function start(){
         if(data.type==='enable-chip')await refresh();
       }catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
     }
-    else if(data.type==='note'){
+    else if(data.type==='note'||data.type==='midi'){
       if(++inFlight>64){await run(stop);ui.setStatus('Too many concurrent notes');return;}
-      try{await enqueueMidi(()=>invoke('play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
+      try{await enqueueMidi(()=>invoke(data.type==='midi'?'send_midi':'play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
       catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
       finally{inFlight--;}
     }else if(data.type==='release'){

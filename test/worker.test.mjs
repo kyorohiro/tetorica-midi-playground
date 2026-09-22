@@ -39,7 +39,7 @@ test('default index lead runs repeatedly through MIDI worker',async()=>{
 });
 async function runLoopScript(code){
  const w=new Worker(new URL('./fixtures/worker-host.mjs',import.meta.url));
- const logs=[],notes=[],releases=[];
+ const logs=[],notes=[],releases=[],midis=[];
  try{await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(new Error('Loop timeout')),3000);
   const fail=e=>{clearTimeout(timer);reject(e);};
@@ -47,12 +47,13 @@ async function runLoopScript(code){
   w.on('message',m=>{
    if(m.type==='ready')w.postMessage({type:'run',bpm:120,code});
    if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
+   if(m.type==='midi'){midis.push(m.payload);w.postMessage({type:'reply',id:m.id});}
    if(m.type==='log')logs.push(m.text);
    if(m.type==='release')releases.push(m.owner);
    if(m.type==='error')fail(new Error(m.text));
    if(m.type==='done'){clearTimeout(timer);resolve();}
   });
- });return {logs,notes,releases};}finally{await w.terminate();}
+ });return {logs,notes,releases,midis};}finally{await w.terminate();}
 }
 test('scoped loops keep cycle slots separate across awaits and cancel waiting notes',async()=>{
  const result=await runLoopScript(`
@@ -370,4 +371,25 @@ test('context init example reuses initialization on Apply and resets on Run',asy
  assert.ok(outputs.every(output=>output.name==='tetorica-ym2612'));
  assert.deepEqual(notes,[60,64,67,62,65,69,60,64,67]);
  assert.deepEqual(logs,['Initialized pg.context.','Evaluation count: 1','Evaluation count: 2','Initialized pg.context.','Evaluation count: 1']);
+});
+
+test('low-level globals, pg and explicit loop helpers use the Worker MIDI transport',async()=>{
+ const result=await runLoopScript(`
+ await programChange(30,{channel:2});
+ await pg.noteOn('C4',{channel:2,velocity:100});
+ await pg.cc(7,100,{channel:2});
+ await pitchBend(.5,{channel:2});
+ await channelPressure(80,{channel:2});
+ await polyPressure('C4',81,{channel:2});
+ await noteOff('C4',{channel:2});
+ await send(new Uint8Array([0xf8]));
+ liveLoop('held',async()=>{await noteOn('E4');await beat(10);await noteOn('F4');});
+ pg.liveLoop('explicit',async ctx=>{await ctx.pg.noteOn('G4');await ctx.beat(10);});
+ await beat(.03);stopAllLoops();await beat(.01);
+ `);
+ assert.deepEqual(result.midis.slice(0,8).map(m=>m.bytes),[[0xc1,30],[0x91,60,100],[0xb1,7,100],[0xe1,0,96],[0xd1,80],[0xa1,60,81],[0x81,60,0],[0xf8]]);
+ assert.equal(result.midis[7].tracked,false);
+ const scoped=result.midis.slice(8);
+ assert.deepEqual(scoped.map(m=>m.bytes),[[0x90,64,90],[0x90,67,90]]);
+ assert.deepEqual(scoped.map(m=>m.owner),[1,2]);assert.deepEqual(result.releases,[1,2]);
 });

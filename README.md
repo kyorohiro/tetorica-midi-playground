@@ -175,3 +175,16 @@ The in-app FILES README is maintained in `ui/README.md` (English) and `ui/README
 ### MIDI Clock test sender (macOS)
 
 Run `npm run clock:send` to create a local **Tetorica Test Clock** MIDI source. No IAC setup or external Clock master is required. Commands: `start`, `stop`, `continue`, `bpm 90`, `drop` (silent dropout), `quit`. See [test instructions](docs/issues/clock_sender.md). `npm run clock:test` checks commands; `npm run clock:send -- --self-test` checks real virtual-port transport.
+
+### Low-level MIDI control
+
+Alongside `play()` and live coding helpers, scripts can use `noteOn`, `noteOff`,
+`cc`, `programChange`, `pitchBend`, `channelPressure`, `polyPressure` and raw
+`send`. These target the MIDI output selected in the UI and are also available
+through `pg` and loop-local helpers. Channels are 1–16; programs are 0–127;
+pitch bend is normalized to -1…1. Tracked notes are released on Stop/restart.
+Raw `send()` notes require explicit cleanup.
+
+See [the API guide](ui/README.md#low-level-midi-api) or
+[日本語ガイド](ui/README_jp.md#低レベルmidi-api) for validation, lifecycle and receiver support.
+The bend and CC examples in FILES can be tested with the internal YM2612 or Sega PSG selected in MIDI settings, or a compatible external instrument. Internal Program Change mapping is pending.

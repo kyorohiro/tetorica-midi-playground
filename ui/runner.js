@@ -1,3 +1,4 @@
+import {createMidiPrimitives} from './midi-primitives.js';
 import {outputSlots} from './output-mappings.js';
 import {createOutputApi} from './midi-output.js';
 import {bindLoopContext} from './loop-context.js';
@@ -33,6 +34,8 @@ onmessage=async ({data})=>{
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
+  const primitives=(check=()=>{},owner)=>createMidiPrimitives({check,onError:e=>postMessage({type:'error',text:String(e)}),transmit:payload=>request('midi',{...payload,...(owner===undefined?{}:{owner})})});
+  Object.assign(api,primitives());
   if(external){
     api.beat=count=>external.beat(count);api.nextBeat=()=>external.nextBeat();
     api.play=async(note,{duration=0.5,channel=1,velocity=90}={},sender=send)=>{
@@ -49,7 +52,7 @@ onmessage=async ({data})=>{
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
     // Share the Run clock; keep cancellation and cycle state local to this loop.
     let slot=0;const cycles=new Map();
-    const helpers={...api,playOutput:outputs.scoped(check,owner)};
+    const helpers={...api,...primitives(check,owner),playOutput:outputs.scoped(check,owner)};
     Object.assign(helpers,external?{beat:count=>external.beat(count,check),nextBeat:()=>external.nextBeat(check)}:api.createLoopTiming(check));
     helpers.play=async(note,options)=>{
       check();

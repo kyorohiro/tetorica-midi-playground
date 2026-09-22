@@ -12,7 +12,7 @@ export function bindLoopContext(source) {
     for(const v of Object.values(n))if(Array.isArray(v))v.forEach(findOutputs);else if(v&&typeof v==='object')findOutputs(v);
   }
   findOutputs(ast);
-  const names=['play','beat','nextBeat','cycle','playOutput','pg'];
+  const names=['play','beat','nextBeat','cycle','playOutput','pg','noteOn','noteOff','cc','programChange','pitchBend','channelPressure','polyPressure','send'];
   function walk(node){
     if(!node||typeof node!=='object')return;
     if(isLiveLoop(node)){

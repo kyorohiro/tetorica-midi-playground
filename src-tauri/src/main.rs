@@ -1,3 +1,4 @@
+mod midi_message;
 mod synth_core;
 mod test_synth;
 mod clock;
@@ -35,7 +36,8 @@ struct Session {
     external_clock: bool,
     external_started: bool,
     transport_stop: bool,
-    notes: HashMap<(u64, u8, u8), Instant>,
+    notes: HashMap<(u64, u8, u8), Option<Instant>>,
+    pedals: HashMap<(u64, u8, u8), Option<u64>>,
     note_owners: HashMap<(u64, u8, u8), u64>,
     note_ticks: HashMap<(u64, u8, u8), u64>,
     audition: HashMap<(u8,u8),u64>,
@@ -55,8 +57,58 @@ impl Session {
         }
         error.map_or(Ok(()),Err)
     }
-    fn stop(&mut self) -> Result<(), String> {
+    fn release_pedals(&mut self, keys: Vec<(u64,u8,u8)>) -> Result<(),String> {
         let mut error=None;
+        for (route,channel,controller) in keys {
+            if let Err(e)=self.send_to(route,&[0xb0|channel,controller,0]) {error.get_or_insert(e);}
+            else {self.pedals.remove(&(route,channel,controller));}
+        }
+        error.map_or(Ok(()),Err)
+    }
+    fn script_midi(&mut self, run_id:u64, owner:Option<u64>, bytes:&[u8], tracked:bool) -> Result<(),String> {
+        if run_id!=self.run_id || (self.external_clock && (!self.external_started || !self.clock.running || self.transport_stop)) {
+            return Err("Run was stopped".into());
+        }
+        midi_message::validate(bytes)?;
+        if !tracked {return self.send_to(0,bytes);}
+        if bytes[0]>=0xf0 {return Err("Tracked MIDI requires a channel message".into());}
+        let kind=bytes[0]&0xf0;
+        let channel=bytes[0]&15;
+        let key=(0,channel,bytes[1]);
+        if kind==0x90 && bytes[2]>0 {
+            if self.notes.contains_key(&key) || self.audition.contains_key(&(channel,bytes[1])) {
+                self.send_to(0,&[0x80|channel,bytes[1],0])?;
+            }
+            self.send_to(0,bytes)?;
+            self.notes.insert(key,None);self.note_ticks.remove(&key);
+            self.audition.remove(&(channel,bytes[1]));self.note_owners.remove(&key);
+            if let Some(id)=owner {self.note_owners.insert(key,id);}
+        } else if kind==0x80 || kind==0x90 {
+            // An old loop's noteOff must not release a newer owner's same pitch.
+            if owner.is_some() && ((self.notes.contains_key(&key) && self.note_owners.get(&key).copied()!=owner) || self.audition.contains_key(&(channel,bytes[1]))) {return Ok(());}
+            self.send_to(0,bytes)?;
+            self.notes.remove(&key);self.note_ticks.remove(&key);self.note_owners.remove(&key);
+            self.audition.remove(&(channel,bytes[1]));
+        } else {
+            self.send_to(0,bytes)?;
+            if kind==0xb0 {
+                match bytes[1] {
+                    64 | 66 => {if bytes[2]>=64 {self.pedals.insert(key,owner);} else {self.pedals.remove(&key);}},
+                    121 => self.pedals.retain(|(route,ch,_),_| *route!=0 || *ch!=channel),
+                    120 | 123 => {
+                        self.notes.retain(|(route,ch,_),_| *route!=0 || *ch!=channel);
+                        self.note_ticks.retain(|(route,ch,_),_| *route!=0 || *ch!=channel);
+                        self.note_owners.retain(|(route,ch,_),_| *route!=0 || *ch!=channel);
+                        self.audition.retain(|(ch,_),_| *ch!=channel);
+                    },
+                    _ => {},
+                }
+            }
+        }
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<(), String> {
+        let mut error=self.release_pedals(self.pedals.keys().copied().collect()).err();
         let keys:Vec<_>=self.audition.keys().copied().collect();
         for (channel,note) in keys {
             if let Err(e)=self.send_to(0,&[0x80|channel,note,0]) {error.get_or_insert(e);}
@@ -96,7 +148,7 @@ impl Session {
         if route==0 {self.audition.remove(&(channel,note));}
         self.note_owners.remove(&key);
         self.note_ticks.remove(&key);
-        self.notes.insert(key,Instant::now()+Duration::from_millis(duration_ms));
+        self.notes.insert(key,Some(Instant::now()+Duration::from_millis(duration_ms)));
         Ok(())
     }
     fn owned_note(
@@ -154,7 +206,10 @@ impl Session {
             .filter(|(_, id)| **id == owner)
             .map(|(key, _)| *key)
             .collect();
-        self.release_notes(keys)
+        let pedals=self.pedals.iter().filter(|(_,id)|**id==Some(owner)).map(|(key,_)|*key).collect();
+        let pedal_result=self.release_pedals(pedals);
+        let note_result=self.release_notes(keys);
+        pedal_result.and(note_result)
     }
     fn expire(&mut self, now: Instant) -> Result<(), String> {
         if self.external_clock && self.external_started && (self.transport_stop || !self.clock.running || self.last_clock.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(1))) {
@@ -166,7 +221,7 @@ impl Session {
         let keys: Vec<_> = self
             .notes
             .iter()
-            .filter(|(key, deadline)| self.note_ticks.get(key).map_or(**deadline <= now, |tick| self.clock.ticks >= *tick))
+            .filter(|(key, deadline)| self.note_ticks.get(key).map_or(deadline.is_some_and(|time| time <= now), |tick| self.clock.ticks >= *tick))
             .map(|(key, _)| *key)
             .collect();
         self.release_notes(keys)
@@ -377,7 +432,7 @@ fn disconnect(state: tauri::State<AppState>) -> Result<(), String> {
     s.run_id += 1;
     let result = s.stop();
     s.routes.clear(); s.route_ids.clear(); s.output_id=None;
-    s.notes.clear(); s.note_owners.clear(); s.note_ticks.clear(); s.audition.clear(); s.off=None;
+    s.notes.clear(); s.pedals.clear(); s.note_owners.clear(); s.note_ticks.clear(); s.audition.clear(); s.off=None;
     s.output = None;
     s.output_name = None;
     s.clock = Default::default();
@@ -411,6 +466,10 @@ fn play_midi_note(
 ) -> Result<(), String> {
     let mut s=state.session.lock().unwrap();
     s.routed_note(route.unwrap_or(0),run_id,owner,note,channel,velocity,duration_ms,duration_beats)
+}
+#[tauri::command]
+fn send_midi(run_id:u64, owner:Option<u64>, bytes:Vec<u8>, tracked:bool, state:tauri::State<AppState>) -> Result<(),String> {
+    state.session.lock().unwrap().script_midi(run_id,owner,&bytes,tracked)
 }
 #[tauri::command]
 fn release_loop_notes(
@@ -500,6 +559,7 @@ fn main() {
             keyboard_off,
             begin_run,
             play_midi_note,
+            send_midi,
             script_output,
             enable_sound_chip,
             release_loop_notes,
@@ -532,6 +592,64 @@ mod tests {
             self.0.lock().unwrap().push(bytes.to_vec());
             Ok(())
         }
+    }
+    #[test]
+    fn primitive_notes_hold_until_off_and_stop_and_preserve_play_deadlines() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session::default();s.output=Some(Box::new(Fake(messages.clone())));
+        s.script_midi(0,Some(3),&[0x90,60,100],true).unwrap();
+        s.expire(Instant::now()+Duration::from_secs(100)).unwrap();
+        assert!(s.notes.contains_key(&(0,0,60)));
+        s.routed_note(0,0,Some(4),60,1,90,50,None).unwrap();
+        s.release_owner(0,3).unwrap();assert!(s.notes.contains_key(&(0,0,60)));
+        s.script_midi(0,Some(3),&[0x80,60,0],true).unwrap();assert!(s.notes.contains_key(&(0,0,60)));
+        s.expire(Instant::now()+Duration::from_secs(1)).unwrap();assert!(s.notes.is_empty());
+        s.script_midi(0,None,&[0x90,64,90],true).unwrap();
+        s.script_midi(0,None,&[0x80,64,27],true).unwrap();
+        assert_eq!(messages.lock().unwrap().last().unwrap(),&vec![0x80,64,27]);
+        s.script_midi(0,None,&[0x91,67,90],true).unwrap();s.stop().unwrap();assert!(s.notes.is_empty());
+        assert_eq!(messages.lock().unwrap().last().unwrap(),&vec![0x81,67,0]);
+    }
+    #[test]
+    fn primitives_release_loop_notes_and_pedals_and_reject_stale_runs() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session::default();s.output=Some(Box::new(Fake(messages.clone())));
+        s.script_midi(0,Some(1),&[0xb0,64,127],true).unwrap();
+        s.script_midi(0,Some(1),&[0x90,60,100],true).unwrap();
+        s.script_midi(0,Some(2),&[0x91,64,100],true).unwrap();
+        s.release_owner(0,1).unwrap();
+        assert!(!s.notes.contains_key(&(0,0,60)));assert!(s.notes.contains_key(&(0,1,64)));assert!(s.pedals.is_empty());
+        assert!(messages.lock().unwrap().contains(&vec![0xb0,64,0]));
+        s.script_midi(0,None,&[0xb1,66,127],true).unwrap();
+        s.run_id+=1;s.stop().unwrap();
+        assert!(s.notes.is_empty());assert!(s.pedals.is_empty());
+        let count=messages.lock().unwrap().len();
+        assert!(s.script_midi(0,None,&[0x90,60,90],true).is_err());
+        assert!(s.script_midi(0,None,&[0xfa],false).is_err());
+        assert_eq!(messages.lock().unwrap().len(),count);
+    }
+    #[test]
+    fn midi_system_messages_validation_and_raw_cleanup_contract() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session::default();s.output=Some(Box::new(Fake(messages.clone())));
+        for bytes in [vec![0xc0,30],vec![0xe0,0,64],vec![0xa0,60,80],vec![0xd0,80],vec![0xf1,0],vec![0xf2,0,1],vec![0xf3,0],vec![0xf6],vec![0xf8],vec![0xfa],vec![0xfb],vec![0xfc],vec![0xfe],vec![0xff],vec![0xf0,0x7d,1,0xf7]] {
+            s.script_midi(0,None,&bytes,false).unwrap();assert_eq!(messages.lock().unwrap().last().unwrap(),&bytes);
+        }
+        for bytes in [vec![],vec![60,90],vec![0x90,60],vec![0x90,60,128],vec![0xc0,1,2],vec![0xf4],vec![0xf5],vec![0xf7],vec![0xf9],vec![0xfd],vec![0xf0,1],vec![0xf0,0xff,0xf7],vec![0xf8,0xfa]] {assert!(s.script_midi(0,None,&bytes,false).is_err());}
+        assert!(s.script_midi(0,None,&vec![0;65537],false).is_err());
+        s.script_midi(0,None,&[0x90,60,100],false).unwrap();
+        let count=messages.lock().unwrap().len();s.stop().unwrap();assert_eq!(messages.lock().unwrap().len(),count);
+    }
+    #[test]
+    fn cc_channel_cleanup_does_not_expire_other_channels() {
+        let messages=Arc::new(Mutex::new(Vec::new()));
+        let mut s=Session::default();s.output=Some(Box::new(Fake(messages)));
+        s.script_midi(0,Some(1),&[0x90,60,100],true).unwrap();
+        s.script_midi(0,Some(2),&[0x91,60,100],true).unwrap();
+        s.script_midi(0,None,&[0xb0,123,0],true).unwrap();
+        assert!(!s.notes.contains_key(&(0,0,60)));assert!(s.notes.contains_key(&(0,1,60)));
+        s.script_midi(0,None,&[0xb1,64,127],true).unwrap();
+        s.script_midi(0,None,&[0xb1,121,0],true).unwrap();assert!(s.pedals.is_empty());
     }
     #[test]
     fn assigned_port_never_falls_back_to_another_same_name_device() {
@@ -577,7 +695,7 @@ mod tests {
         impl NoteOutput for Broken {fn send(&mut self,_:&[u8])->Result<(),String>{Err("unplugged".into())}}
         let mut s=Session::default();let messages=Arc::new(Mutex::new(Vec::new()));
         s.routes.insert(1,Box::new(Broken));s.routes.insert(2,Box::new(Fake(messages.clone())));
-        s.notes.insert((1,0,60),Instant::now());s.notes.insert((2,0,60),Instant::now());
+        s.notes.insert((1,0,60),Some(Instant::now()));s.notes.insert((2,0,60),Some(Instant::now()));
         assert!(s.stop().is_err());assert!(!s.notes.contains_key(&(2,0,60)));
         assert_eq!(messages.lock().unwrap().as_slice(),&[vec![0x80,60,0]]);
     }

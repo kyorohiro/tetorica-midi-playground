@@ -195,7 +195,7 @@ MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます
 
 ## 内蔵YM2612で試す（macOS試験版）
 
-DAWなしで確認できます。**MIDI connections**で**YM2612 + Sega PSG**を有効にし、MIDI設定で**Tetorica YM2612**を選んで、KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16でFM音源6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。音色ファイル読込・サステイン・Pitch Bendは未対応です。
+DAWなしで確認できます。**MIDI connections**で**YM2612 + Sega PSG**を有効にし、MIDI設定で**Tetorica YM2612**を選んで、KeyboardまたはRunで演奏してください。もう1つのポートは**Tetorica Sega PSG**です。YM2612はCH1〜16でFM音源6音を共有します。Sega PSGはCH1〜9 / 11〜16で矩形波3音を共有し、CH10では固定ホワイトノイズ1音を鳴らします（ノート番号による音色変更なし）。PSGの低音は約109Hzが下限です。Mixerで音源別の音量・パン・ミュートとマスター音量を調整できます。有効化時のmacOS既定音声出力を使います。デバイス変更後は無効化→再有効化し、MIDI出力も再接続してください。サステイン・Pitch Bend・CC等に対応します（下記「低レベルMIDI API」参照）。音色ファイル読込は未対応です。
 
 ## 複数音源・複数チャンネル（試作）
 
@@ -288,3 +288,49 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
 FILESの`lib/README_jp.md`に手順を記載しています。`examples/09_library.js`はDAWなしで試せます。`lib/phrase.js`の`playPhrase(context, output, notes, options)`にはJSDoc補完用の型を記載しています。例は`await import("../lib/phrase.js")`で読み込み、liveLoopのcontextを明示的に渡すことで停止に追従します。import先はRun fileのローカルなヘルパーを参照できません。ライブラリコードは編集可能で、保存済みの編集は保持します。
 
 `pg.` からMIDI APIを辿れます（`pg.midi.output(...)`、`pg.play(...)`、`pg.liveLoop(...)`）。`context` と `pg.context` は任意の値を保存する同じ共有オブジェクトで、Applyで保持され、Runでリセットされます。`liveLoop` のコールバック引数（`context` など）はループ用APIです。引数を明示する場合、`context.pg` でループ用API、`context.context` で共有状態へアクセスできます。引数なしのインラインコールバックでは、`pg` が自動的にループ用APIに切り替わります。
+
+## 低レベルMIDI API
+
+`play()`などの便利APIに加え、選択中のMIDI出力へ直接送信できます。`pg.noteOn()`のような名前空間と`liveLoop`の引数にも同じAPIがあります。今回は`midi.output()`ハンドルには追加していません。出力先はMIDI settingsで選んでください。
+
+| API | 値・既定値 |
+| --- | --- |
+| `noteOn(note, {channel, velocity})` | 音名またはMIDI番号0–127。velocityは整数1–127、既定90。明示的な消音まで保持。 |
+| `noteOff(note, {channel, velocity})` | release velocityは整数0–127、既定0。 |
+| `cc(controller, value, {channel})` | controller・valueは整数0–127。 |
+| `programChange(program, {channel})` | rawのプログラム番号0–127。1–128ではない。 |
+| `pitchBend(value, {channel})` | -1〜1。-1→0、0→8192、1→16383の14-bit値へ変換。半音幅は受信音源の設定。 |
+| `channelPressure(value, {channel})` | チャンネル全体のaftertouch。整数0–127。 |
+| `polyPressure(note, value, {channel})` | 音ごとのaftertouch。整数0–127。 |
+| `send(bytes)` | Array／Uint8Arrayで完全なMIDIメッセージを1つ送信。 |
+
+channelはすべて整数1–16、既定1です。不正な数値・長さは拒否します。各APIは送信完了応答を待つPromiseを返します。発音時間を待つ`play()`とは異なります。順番や送信エラーを確認したい場合は`await`してください。awaitを省略した送信エラーもConsoleへ通知します。
+
+`noteOn()`はネイティブ側で追跡し、`noteOff()`・Stop・Run再開始で消音します。引数なしの直接inline・ブロック形式の`liveLoop`では、新APIもループに束縛されます。明示引数では`async ({noteOn, beat}) => { ... }`または`ctx.noteOn()`／`ctx.pg.noteOn()`を使ってください。stopLoop・同名ループのApply置換も、そのループのノートを解放します。別のループに所有権が移った同じ音を、古いループのnoteOffが消すことはありません。
+
+`cc()`経由でONにしたサステイン(CC64)・ソステヌート(CC66)は、Stop・Run再開始や所有ループの解放時にOFFにします。コントローラーはチャンネル全体に作用するため、同じCHの別ループにも影響します。外部音源の他のCC・プログラム・Pitch Bend・pressureは自動リセットしません。内蔵音源のStop/Panicは、編集したFM音色を保ちつつコントローラーを初期値に戻します。CC120/123はそのCH全体のノートを解放し、CC121はペダル追跡もリセットします。
+
+raw `send()`はchannel messageに加えて、System Common（F1/F2/F3/F6）、Clock・Start・Continue・Stop・Active Sensing・Reset、F0…F7で囲んだSysExを、既存のネイティブMIDI出力へ送れます。1回最大65536バイト。データは7-bit、running status・複数メッセージの連結・途中へのrealtime挿入は非対応です。メッセージごとに呼んでください。rawのノートやペダルは自動追跡・cleanup対象外です。必要なNote Off等も自分で送信してください。rawでClock等を送ってもアプリのBPM・transportは変更しません。
+
+```js
+await programChange(30, { channel: 1 });
+await noteOn("C4", { channel: 1, velocity: 100 });
+await pitchBend(0.5, { channel: 1 });
+await beat(0.5);
+await noteOff("C4", { channel: 1 });
+await pitchBend(0, { channel: 1 });
+await cc(1, 64, { channel: 1 });
+await send(new Uint8Array([0xB0, 1, 0]));
+```
+
+`examples/11_midi_pitch_bend.js`は音を保持してベンドする例、`examples/12_midi_cc.js`は音量・パン・サステイン・モジュレーションの例です。内蔵で試すにはMIDI connectionsで**YM2612 + Sega PSG**を有効にし、出力として**Tetorica YM2612**または**Tetorica Sega PSG**を選択してRunしてください。対応する外部音源でも試せます。
+
+内蔵音源の対応範囲:
+- Pitch Bendは±2半音固定。発音中の音程も再発音せず変更します。
+- CC7（音量）とCC11（expression）をCH別に乗算します。
+- CC10（パン）はYM2612ではハードウェアの左(0–42)／中央(43–84)／右(85–127)。PSGは声ごとのソフトウェアステレオパンです。Mixerの音源全体のパンとは別です。
+- CC64（サステイン）・CC66（ソステヌート）・CC120（即時消音）・CC123（全ノートのキー解放）。CC123はペダルに従って保持し、CC120は直ちに消音します。
+- CC121は音量・パンを保ち、ベンド・modulation・pressure・expression・ペダルをリセットします。
+- CC1・channelPressure・polyPressureは5 Hzのビブラートに割り当て、最大±0.5半音。3つの値の最大値を深さに使います。polyPressureは指定音だけに適用します。PSG CH10のノイズは固定ピッチなのでベンド・ビブラートの対象外です。
+- 内蔵のStop/Panicはノートとコントローラーをリセットします。FM音色設定は保持し、音色編集は従来どおり次のNote Onから反映します。
+- Program Changeの送信はできますが、内蔵の音色番号は未割当のため現在のCH音色を維持します。SysEx・記載のないCCの内蔵受信処理は未実装です。

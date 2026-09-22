@@ -81,3 +81,12 @@ test('shared context initialization sample exposes its JSDoc state and output ty
  const options=await completions(sample+'\nstate.instrument.play("C4",{/*here*/});');
  for(const name of ['duration','velocity'])assert.ok(options.includes(name),name);
 });
+
+test('low-level MIDI APIs complete as globals, pg members and loop helpers',async()=>{
+ const names=['noteOn','noteOff','cc','programChange','pitchBend','channelPressure','polyPressure','send'];
+ for(const code of ['/*here*/','pg./*here*/','liveLoop("x",async ctx=>{ctx./*here*/});']){
+  const items=await completions(code);for(const name of names)assert.ok(items.includes(name),name);
+ }
+ const options=await completions('noteOff("C4",{/*here*/});');
+ assert.ok(options.includes('velocity'));assert.ok(options.includes('channel'));
+});

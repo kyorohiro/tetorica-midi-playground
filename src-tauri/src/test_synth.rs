@@ -10,6 +10,7 @@ use std::sync::{
 struct Event {
     port: usize,
     bytes: [u8; 3],
+    len: usize,
 }
 struct Shared {
     queue: ArrayQueue<Event>,
@@ -37,16 +38,18 @@ impl Default for Shared {
 }
 impl Shared {
     fn receive(&self, port: usize, bytes: &[u8]) {
-        if bytes.len() == 3
-            && matches!(bytes[0] & 0xf0, 0x80 | 0x90 | 0xb0)
-            && bytes[1] < 128
-            && bytes[2] < 128
-        {
+        let valid=match bytes.first().map(|b|b&0xf0) {
+            Some(0xc0|0xd0)=>bytes.len()==2,
+            Some(0x80|0x90|0xa0|0xb0|0xe0)=>bytes.len()==3,
+            _=>false,
+        };
+        if port<2 && valid && bytes[1..].iter().all(|v|*v<128) {
             if self
                 .queue
                 .push(Event {
                     port,
-                    bytes: [bytes[0], bytes[1], bytes[2]],
+                    bytes: [bytes[0], bytes[1], *bytes.get(2).unwrap_or(&0)],
+                    len:bytes.len(),
                 })
                 .is_err()
             {
@@ -86,7 +89,7 @@ impl Shared {
                         synth.panic();
                     }
                 } else {
-                    mixer.synths[e.port].midi(&e.bytes);
+                    mixer.synths[e.port].midi(&e.bytes[..e.len]);
                 }
             }
         }
@@ -141,6 +144,7 @@ impl Rack {
                 .push(Event {
                     port: 2,
                     bytes: [0; 3],
+                    len:0,
                 })
                 .is_err()
             {
@@ -331,6 +335,14 @@ pub fn synth_panic(state: tauri::State<Rack>) {
 mod tests {
     use super::*;
     #[test]
+    fn queue_accepts_two_and_three_byte_channel_controls_for_both_internal_ports() {
+        let shared=Shared::default();
+        for port in [0,1] {for message in [vec![0xc0,30],vec![0xd0,80],vec![0xa0,60,80],vec![0xe0,0,64],vec![0xb0,7,100]] {
+            shared.receive(port,&message);let event=shared.queue.pop().unwrap();assert_eq!(&event.bytes[..event.len],message.as_slice());
+        }}
+        shared.receive(0,&[0xd0,128]);shared.receive(0,&[0xd0,10,20]);shared.receive(2,&[0x90,60,90]);assert!(shared.queue.is_empty());
+    }
+    #[test]
     fn patch_bank_and_queue_are_validated_without_audio_device() {
         let rack = Rack::default();
         let mut patch = FmPatch::default();
@@ -376,6 +388,7 @@ mod tests {
             .push(Event {
                 port: 2,
                 bytes: [0; 3],
+                    len:0,
             })
             .ok()
             .unwrap();

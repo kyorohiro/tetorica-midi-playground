@@ -15,6 +15,7 @@ public:
 
     void reset();
     void write(uint8_t data);
+    void set_pan(uint32_t voice, float pan);
     void generate(float *left, float *right, uint32_t frames);
 
     uint32_t sample_rate() const { return m_sample_rate; }
@@ -35,6 +36,7 @@ private:
     float tone_level(uint32_t channel) const;
     float noise_level() const;
 
+    float m_pan[4];
     uint32_t m_sample_rate;
     uint32_t m_clock;
     uint32_t m_clock_accumulator;

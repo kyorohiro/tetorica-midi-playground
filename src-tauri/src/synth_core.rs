@@ -36,9 +36,62 @@ impl Chip {
 #[derive(Clone, Copy, Default)]
 struct Voice {
     held: bool,
+    key_down: bool,
+    sostenuto: bool,
+    velocity: u8,
+    pressure: u8,
     channel: u8,
     note: u8,
     age: u64,
+}
+#[derive(Clone, Copy)]
+struct ChannelControl {
+    bend: f64, volume: u8, expression: u8, pan: u8,
+    modulation: u8, pressure: u8, sustain: bool, sostenuto: bool,
+}
+impl Default for ChannelControl {
+    fn default() -> Self {Self {bend:0.0,volume:127,expression:127,pan:64,modulation:0,pressure:0,sustain:false,sostenuto:false}}
+}
+impl ChannelControl {
+    fn update(&mut self, bytes:&[u8]) {
+        match bytes[0]&0xf0 {
+            0xe0 => {let n=(bytes[1] as i32)|((bytes[2] as i32)<<7);self.bend=(n-8192) as f64/if n<8192 {8192.0}else{8191.0};},
+            0xd0 => self.pressure=bytes[1],
+            0xb0 => match bytes[1] {
+                1=>self.modulation=bytes[2],7=>self.volume=bytes[2],10=>self.pan=bytes[2],11=>self.expression=bytes[2],
+                64=>self.sustain=bytes[2]>=64,66=>self.sostenuto=bytes[2]>=64,
+                121=>{let (volume,pan)=(self.volume,self.pan);*self=Self::default();self.volume=volume;self.pan=pan;},
+                _=>{},
+            },
+            _=>{},
+        }
+    }
+    fn pitch(&self,voice:Voice,phase:f64)->f64 {
+        let depth=self.modulation.max(self.pressure).max(voice.pressure) as f64/127.0*0.5;
+        voice.note as f64+self.bend*2.0+depth*phase.sin()
+    }
+    fn gain(&self)->f64 {self.volume as f64*self.expression as f64/(127.0*127.0)}
+}
+fn valid_channel_message(bytes:&[u8])->bool {
+    if bytes.is_empty() || !(0x80..=0xef).contains(&bytes[0]) {return false;}
+    let length=if matches!(bytes[0]&0xf0,0xc0|0xd0){2}else{3};
+    bytes.len()==length && bytes[1..].iter().all(|v|*v<128)
+}
+fn update_voice_controls<const N:usize>(voices:&mut [Voice;N],controls:&mut [ChannelControl;16],bytes:&[u8]) {
+    let ch=bytes[0]&15;
+    let old_sostenuto=controls[ch as usize].sostenuto;
+    controls[ch as usize].update(bytes);
+    for voice in voices.iter_mut().filter(|v|v.held&&v.channel==ch) {
+        if bytes[0]&0xf0==0xa0 && voice.note==bytes[1] {voice.pressure=bytes[2];}
+        if bytes[0]&0xf0==0xb0 {
+            match bytes[1] {
+                66=>{if !old_sostenuto&&bytes[2]>=64 {voice.sostenuto=voice.key_down;}else if bytes[2]<64{voice.sostenuto=false;}},
+                121=>{voice.sostenuto=false;voice.pressure=0;},
+                123=>voice.key_down=false,
+                _=>{},
+            }
+        }
+    }
 }
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,6 +177,11 @@ impl FmPatch {
     }
 }
 pub struct Synth {
+    controls: [ChannelControl;16],
+    voice_patches: [FmPatch;6],
+    modulation_phase: f64,
+    control_tick: u32,
+    rate: u32,
     patches: [FmPatch; 16],
     chip: Chip,
     voices: [Voice; 6],
@@ -144,6 +202,8 @@ impl Synth {
         let chip = Chip::new()?;
         let ratio = CLOCK / unsafe { rack_chip_divider(chip.0.as_ptr()) } as f64 / rate as f64;
         Ok(Self {
+            controls:[ChannelControl::default();16],voice_patches:[FmPatch::default();6],
+            modulation_phase:0.0,control_tick:0,rate,
             patches: [FmPatch::default(); 16],
             chip,
             voices: [Voice::default(); 6],
@@ -192,7 +252,20 @@ impl Synth {
             }
             self.chip.write(port, 0x90 + offset + slot, 0);
         }
-        let hz = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
+        self.serial += 1;
+        self.voices[voice] = Voice {
+            held: true,key_down:true,sostenuto:false,velocity,pressure:0,
+            channel: ch,
+            note,
+            age: self.serial,
+        };
+        self.voice_patches[voice]=patch;
+        self.update_voice(voice);
+        self.key(voice, true);
+    }
+    fn tune(&mut self,voice:usize,pitch:f64) {
+        let port=voice/3;let offset=(voice%3) as u32;
+        let hz = 440.0 * 2f64.powf((pitch - 69.0) / 12.0);
         let mut best = (f64::INFINITY, 0, 1);
         for block in 0..8 {
             let unit = CLOCK * 2f64.powi(block - 1) / (144.0 * 1048576.0);
@@ -205,61 +278,49 @@ impl Synth {
         self.chip
             .write(port, 0xa4 + offset, (best.1 << 3) | (best.2 >> 8));
         self.chip.write(port, 0xa0 + offset, best.2 & 255);
-        self.serial += 1;
-        self.voices[voice] = Voice {
-            held: true,
-            channel: ch,
-            note,
-            age: self.serial,
-        };
-        self.key(voice, true);
+    }
+    fn update_voice(&mut self,i:usize) {
+        let voice=self.voices[i];let control=self.controls[voice.channel as usize];
+        self.tune(i,control.pitch(voice,self.modulation_phase));
+        let port=i/3;let offset=(i%3) as u32;
+        // YM2612 has binary left/right routing, not continuous per-voice pan.
+        let pan=if control.pan<43 {0x80}else if control.pan>84 {0x40}else{0xc0};
+        self.chip.write(port,0xb4+offset,pan);
+        let patch=self.voice_patches[i];
+        let carriers=[0b1000,0b1000,0b1000,0b1000,0b1010,0b1110,0b1110,0b1111];
+        let gain=control.gain();
+        let attenuation=if gain<=0.0 {127}else{(-20.0*gain.log10()/0.75).round() as u32};
+        for (op,slot) in [0,8,4,12].iter().enumerate() {
+            let base=patch.registers(op,voice.velocity)[1];
+            let tl=if carriers[patch.algorithm as usize]&(1<<op)!=0 {(base+attenuation).min(127)}else{base};
+            self.chip.write(port,0x40+offset+slot,tl);
+        }
     }
     pub fn midi(&mut self, bytes: &[u8]) {
-        if bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
-            return;
+        if !valid_channel_message(bytes) {return;}
+        let ch=bytes[0]&15;let note=bytes[1];
+        match bytes[0]&0xf0 {
+            0x90 if bytes[2]>0=>{
+                let v=self.voices.iter().position(|v|v.held&&v.channel==ch&&v.note==note)
+                    .or_else(||self.voices.iter().position(|v|!v.held))
+                    .unwrap_or_else(||(0..6).min_by_key(|i|self.voices[*i].age).unwrap());
+                self.start(v,ch,note,bytes[2]);
+            },
+            0x80|0x90=>{for voice in &mut self.voices {if voice.channel==ch&&voice.note==note{voice.key_down=false;}}},
+            _=>update_voice_controls(&mut self.voices,&mut self.controls,bytes),
         }
-        let ch = bytes[0] & 15;
-        let note = bytes[1];
-        match bytes[0] & 0xf0 {
-            0x90 if bytes[2] > 0 => {
-                let v = self
-                    .voices
-                    .iter()
-                    .position(|v| v.held && v.channel == ch && v.note == note)
-                    .or_else(|| self.voices.iter().position(|v| !v.held))
-                    .unwrap_or_else(|| (0..6).min_by_key(|i| self.voices[*i].age).unwrap());
-                self.start(v, ch, note, bytes[2]);
-            }
-            0x80 | 0x90 => {
-                for i in 0..6 {
-                    if self.voices[i].held
-                        && self.voices[i].channel == ch
-                        && self.voices[i].note == note
-                    {
-                        self.key(i, false);
-                        self.voices[i].held = false;
-                    }
-                }
-            }
-            0xb0 if note == 123 || note == 120 => {
-                for i in 0..6 {
-                    if self.voices[i].channel == ch {
-                        self.key(i, false);
-                        self.voices[i].held = false;
-                        if note == 120 {
-                            for slot in [0, 4, 8, 12] {
-                                self.chip.write(i / 3, 0x40 + (i % 3) as u32 + slot, 127);
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
+        for i in 0..6 {
+            let v=self.voices[i];if !v.held||v.channel!=ch{continue;}
+            if (bytes[0]&0xf0==0xb0&&note==120)||(!v.key_down&&!self.controls[ch as usize].sustain&&!v.sostenuto) {
+                self.key(i,false);self.voices[i].held=false;
+                if bytes[0]&0xf0==0xb0&&note==120{for slot in [0,4,8,12]{self.chip.write(i/3,0x40+(i%3) as u32+slot,127);}}
+            }else{self.update_voice(i);}
         }
     }
     pub fn panic(&mut self) {
         unsafe { rack_chip_reset(self.chip.0.as_ptr()) };
         self.voices = [Voice::default(); 6];
+        self.controls=[ChannelControl::default();16];self.modulation_phase=0.0;
         self.previous = [0.0; 2];
         self.next = [0.0; 2];
         self.phase = 0.0;
@@ -273,6 +334,9 @@ impl Synth {
             .fold(0, |mask, v| mask | (1 << v.channel))
     }
     pub fn sample(&mut self) -> [f32; 2] {
+        self.modulation_phase=(self.modulation_phase+std::f64::consts::TAU*5.0/self.rate as f64)%std::f64::consts::TAU;
+        self.control_tick=(self.control_tick+1)%64;
+        if self.control_tick==0 {for i in 0..6 {let v=self.voices[i];let c=self.controls[v.channel as usize];if v.held&&(c.modulation>0||c.pressure>0||v.pressure>0){self.tune(i,c.pitch(v,self.modulation_phase));}}}
         // Linear resampling is sufficient for this audition instrument; not mastering quality.
         self.phase += self.ratio;
         while self.phase >= 1.0 {
@@ -295,9 +359,11 @@ extern "C" {
     fn rack_psg_delete(p: *mut c_void);
     fn rack_psg_reset(p: *mut c_void);
     fn rack_psg_write(p: *mut c_void, value: u32);
+    fn rack_psg_pan(p:*mut c_void, voice:u32, pan:f32);
     fn rack_psg_sample(p: *mut c_void, stereo: *mut f32);
 }
 pub struct Psg {
+    controls:[ChannelControl;16],rate:u32,modulation_phase:f64,control_tick:u32,
     chip: NonNull<c_void>,
     voices: [Voice; 4],
     serial: u64,
@@ -315,6 +381,7 @@ impl Psg {
             return Err("Invalid sample rate".into());
         }
         Ok(Self {
+            controls:[ChannelControl::default();16],rate,modulation_phase:0.0,control_tick:0,
             chip: NonNull::new(unsafe { rack_psg_new(rate) }).ok_or("PSG allocation failed")?,
             voices: [Voice::default(); 4],
             serial: 0,
@@ -327,66 +394,46 @@ impl Psg {
         self.write(0x9f | ((i as u32) << 5));
         self.voices[i].held = false;
     }
-    fn midi(&mut self, bytes: &[u8]) {
-        if bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
-            return;
+    fn tune(&mut self,i:usize,pitch:f64) {
+        if i==3{return;} // CH10 retains its fixed-rate noise percussion.
+        let hz=440.0*2f64.powf((pitch-69.0)/12.0);
+        let period=(3_579_545.0/(32.0*hz)).round().clamp(1.0,1023.0) as u32;
+        self.write(0x80|((i as u32)<<5)|(period&15));self.write(period>>4);
+    }
+    fn update_voice(&mut self,i:usize) {
+        let v=self.voices[i];let c=self.controls[v.channel as usize];
+        self.tune(i,c.pitch(v,self.modulation_phase));
+        let base=(-20.0*(v.velocity as f64/127.0).log10()/2.0).round().clamp(0.0,14.0);
+        let gain=c.gain();
+        let attenuation=if gain<=0.0{15}else{(base+(-20.0*gain.log10()/2.0).round()).clamp(0.0,15.0) as u32};
+        self.write(0x90|((i as u32)<<5)|attenuation);
+        let pan=if c.pan<64{(c.pan as f32-64.0)/64.0}else{(c.pan as f32-64.0)/63.0};
+        unsafe{rack_psg_pan(self.chip.as_ptr(),i as u32,pan);}
+    }
+    fn midi(&mut self,bytes:&[u8]) {
+        if !valid_channel_message(bytes){return;}
+        let ch=bytes[0]&15;let note=bytes[1];
+        match bytes[0]&0xf0 {
+            0x90 if bytes[2]>0=>{
+                let i=if ch==9{3}else{self.voices[..3].iter().position(|v|v.held&&v.channel==ch&&v.note==note)
+                    .or_else(||self.voices[..3].iter().position(|v|!v.held))
+                    .unwrap_or_else(||(0..3).min_by_key(|i|self.voices[*i].age).unwrap())};
+                self.mute(i);if i==3{self.write(0xe5);}
+                self.serial+=1;self.voices[i]=Voice{held:true,key_down:true,sostenuto:false,velocity:bytes[2],pressure:0,channel:ch,note,age:self.serial};
+                self.update_voice(i);
+            },
+            0x80|0x90=>{for v in &mut self.voices{if v.channel==ch&&v.note==note{v.key_down=false;}}},
+            _=>update_voice_controls(&mut self.voices,&mut self.controls,bytes),
         }
-        let ch = bytes[0] & 15;
-        let note = bytes[1];
-        match bytes[0] & 0xf0 {
-            0x90 if bytes[2] > 0 => {
-                // CH10 is a monophonic fixed white-noise percussion voice.
-                let i = if ch == 9 {
-                    3
-                } else {
-                    self.voices[..3]
-                        .iter()
-                        .position(|v| v.held && v.channel == ch && v.note == note)
-                        .or_else(|| self.voices[..3].iter().position(|v| !v.held))
-                        .unwrap_or_else(|| (0..3).min_by_key(|i| self.voices[*i].age).unwrap())
-                };
-                self.mute(i);
-                if i == 3 {
-                    self.write(0xe5);
-                } else {
-                    let hz = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
-                    let period = (3_579_545.0 / (32.0 * hz)).round().clamp(1.0, 1023.0) as u32;
-                    self.write(0x80 | ((i as u32) << 5) | (period & 15));
-                    self.write(period >> 4);
-                }
-                let attenuation = (-20.0 * (bytes[2] as f64 / 127.0).log10() / 2.0)
-                    .round()
-                    .clamp(0.0, 14.0) as u32;
-                self.write(0x90 | ((i as u32) << 5) | attenuation);
-                self.serial += 1;
-                self.voices[i] = Voice {
-                    held: true,
-                    channel: ch,
-                    note,
-                    age: self.serial,
-                };
-            }
-            0x80 | 0x90 => {
-                for i in 0..4 {
-                    let v = self.voices[i];
-                    if v.held && v.channel == ch && v.note == note {
-                        self.mute(i);
-                    }
-                }
-            }
-            0xb0 if note == 120 || note == 123 => {
-                for i in 0..4 {
-                    if self.voices[i].channel == ch {
-                        self.mute(i);
-                    }
-                }
-            }
-            _ => {}
+        for i in 0..4 {
+            let v=self.voices[i];if !v.held||v.channel!=ch{continue;}
+            if (bytes[0]&0xf0==0xb0&&note==120)||(!v.key_down&&!self.controls[ch as usize].sustain&&!v.sostenuto){self.mute(i);}else{self.update_voice(i);}
         }
     }
     fn panic(&mut self) {
         unsafe { rack_psg_reset(self.chip.as_ptr()) };
         self.voices = [Voice::default(); 4];
+        self.controls=[ChannelControl::default();16];self.modulation_phase=0.0;
     }
     fn active(&self) -> u32 {
         self.voices
@@ -395,6 +442,9 @@ impl Psg {
             .fold(0, |m, v| m | (1 << v.channel))
     }
     fn sample(&mut self) -> [f32; 2] {
+        self.modulation_phase=(self.modulation_phase+std::f64::consts::TAU*5.0/self.rate as f64)%std::f64::consts::TAU;
+        self.control_tick=(self.control_tick+1)%64;
+        if self.control_tick==0{for i in 0..3{let v=self.voices[i];let c=self.controls[v.channel as usize];if v.held&&(c.modulation>0||c.pressure>0||v.pressure>0){self.tune(i,c.pitch(v,self.modulation_phase));}}}
         let mut s = [0.0; 2];
         unsafe { rack_psg_sample(self.chip.as_ptr(), s.as_mut_ptr()) };
         s
@@ -465,6 +515,62 @@ impl Mixer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn test_instrument(psg:bool,rate:u32)->Instrument {
+        if psg {Instrument::SegaPsg(Psg::new(rate).unwrap())} else {Instrument::Ym2612(Synth::new(rate).unwrap())}
+    }
+    fn energies(instrument:&mut Instrument,count:u32)->[f32;2] {
+        let mut energy=[0.0;2];for _ in 0..count{let pcm=instrument.sample();for i in 0..2{energy[i]+=pcm[i]*pcm[i];}}energy
+    }
+    #[test]
+    fn internal_pitch_bend_retunes_held_notes_by_two_semitones() {
+        for psg in [false,true] {for rate in [44100,48000] {
+            let mut s=test_instrument(psg,rate);s.midi(&[0x90,69,100]);
+            for _ in 0..rate/10{s.sample();}
+            let count=|s:&mut Instrument|{let mut previous=0.0;let mut crossings=0;for _ in 0..rate/2{let sample=s.sample()[0];if previous<=0.0&&sample>0.0{crossings+=1;}previous=sample;}crossings};
+            let normal=count(&mut s);s.midi(&[0xe0,127,127]);let high=count(&mut s);
+            s.midi(&[0xe0,0,0]);let low=count(&mut s);
+            assert!((high as f64/normal as f64-2f64.powf(2.0/12.0)).abs()<0.03,"{psg} {rate}: {normal} {high}");
+            assert!((low as f64/normal as f64-2f64.powf(-2.0/12.0)).abs()<0.03,"{psg} {rate}: {normal} {low}");
+        }}
+    }
+    #[test]
+    fn internal_volume_expression_and_pan_change_rendered_audio() {
+        for psg in [false,true] {
+            let mut s=test_instrument(psg,48000);s.midi(&[0x90,69,100]);energies(&mut s,4800);
+            let loud=energies(&mut s,4800)[0];assert!(loud>0.01);
+            s.midi(&[0xb0,7,32]);energies(&mut s,4800);let soft=energies(&mut s,4800)[0];assert!(soft<loud*0.2,"{psg}: {loud} {soft}");
+            s.midi(&[0xb0,7,127]);s.midi(&[0xb0,10,0]);energies(&mut s,48000);let left=energies(&mut s,4800);
+            assert!(left[0]>0.01 && left[1]<left[0]*0.001,"{psg}: {left:?}");
+            s.midi(&[0xb0,10,127]);energies(&mut s,48000);let right=energies(&mut s,4800);
+            assert!(right[1]>0.01 && right[0]<right[1]*0.001,"{psg}: {right:?}");
+            s.midi(&[0xb0,11,0]);energies(&mut s,48000);assert!(energies(&mut s,4800)[1]<right[1]*0.001);
+        }
+    }
+    #[test]
+    fn internal_pedals_hold_release_reset_and_panic_without_stuck_notes() {
+        for psg in [false,true] {
+            let mut s=test_instrument(psg,48000);
+            s.midi(&[0xb0,64,127]);s.midi(&[0x90,60,100]);s.midi(&[0x80,60,0]);assert_eq!(s.active(),1);
+            s.midi(&[0xb0,64,0]);assert_eq!(s.active(),0);
+            s.midi(&[0x90,60,100]);s.midi(&[0xb0,66,127]);s.midi(&[0x90,64,100]);
+            s.midi(&[0x80,60,0]);s.midi(&[0x80,64,0]);assert_eq!(s.active(),1);
+            s.midi(&[0xb0,66,0]);assert_eq!(s.active(),0);
+            s.midi(&[0xb1,64,127]);s.midi(&[0x91,60,100]);s.midi(&[0xb1,123,0]);assert_eq!(s.active(),2);
+            s.midi(&[0xb1,121,0]);assert_eq!(s.active(),0);
+            s.midi(&[0xb0,64,127]);s.midi(&[0x90,60,100]);s.midi(&[0xb0,120,0]);assert_eq!(s.active(),0);
+            s.panic();s.midi(&[0x90,60,100]);s.midi(&[0x80,60,0]);assert_eq!(s.active(),0);
+        }
+    }
+    #[test]
+    fn internal_modulation_and_pressure_affect_audio_only_on_the_addressed_channel() {
+        for psg in [false,true] {for message in [vec![0xb0,1,127],vec![0xd0,127],vec![0xa0,69,127]] {
+            let mut a=test_instrument(psg,48000);let mut b=test_instrument(psg,48000);
+            a.midi(&[0x91,69,100]);b.midi(&[0x91,69,100]);a.midi(&message);
+            for _ in 0..4800{assert_eq!(a.sample(),b.sample());}
+            a.panic();b.panic();a.midi(&[0x90,69,100]);b.midi(&[0x90,69,100]);a.midi(&message);
+            let diff:f32=(0..4800).map(|_|(a.sample()[0]-b.sample()[0]).abs()).sum();assert!(diff>0.1,"{psg}: {message:?} {diff}");
+        }}
+    }
     #[test]
     fn fm_patch_validation_and_register_mapping() {
         let mut p = FmPatch::default();
