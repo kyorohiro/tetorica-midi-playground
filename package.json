@@ -1,6 +1,6 @@
 {
   "name": "tetorica-midi-playground",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "scripts": {
     "dev": "tauri dev",

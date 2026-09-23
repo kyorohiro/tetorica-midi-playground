@@ -1,3 +1,4 @@
+import {channels} from './midi-channels.js';
 import {readVoiceFile} from './project-assets.js';
 import {createMidiPrimitives} from './midi-primitives.js';
 import {outputSlots} from './output-mappings.js';
@@ -36,11 +37,11 @@ onmessage=async ({data})=>{
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
   const primitives=(check=()=>{},owner)=>createMidiPrimitives({check,onError:e=>postMessage({type:'error',text:String(e)}),transmit:payload=>request('midi',{...payload,...(owner===undefined?{}:{owner})})});
-  Object.assign(api,primitives());
+  Object.assign(api,channels,primitives());
   if(external){
     api.beat=count=>external.beat(count);api.nextBeat=()=>external.nextBeat();
-    api.play=async(note,{duration=0.5,channel=1,velocity=90}={},sender=send)=>{
-      if(!Number.isFinite(duration)||duration<=0||duration>128||!Number.isInteger(channel)||channel<1||channel>16||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid external MIDI note options');
+    api.play=async(note,{duration=0.5,channel=0,velocity=90}={},sender=send)=>{
+      if(!Number.isFinite(duration)||duration<=0||duration>128||!Number.isInteger(channel)||channel<0||channel>15||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid external MIDI note options');
       external.check();
       await sender({note:noteNumber(note),channel,velocity,durationMs:10000,durationBeats:duration});
       await external.beat(Math.ceil(duration*24)/24);
@@ -54,7 +55,7 @@ onmessage=async ({data})=>{
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
     // Share the Run clock; keep cancellation and cycle state local to this loop.
     let slot=0;const cycles=new Map();
-    const helpers={...api,...primitives(check,owner),playOutput:outputs.scoped(check,owner)};
+    const helpers={...channels,...api,...primitives(check,owner),playOutput:outputs.scoped(check,owner)};
     Object.assign(helpers,external?{beat:count=>external.beat(count,check),nextBeat:()=>external.nextBeat(check)}:api.createLoopTiming(check));
     helpers.play=async(note,options)=>{
       check();

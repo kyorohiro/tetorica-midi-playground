@@ -50,7 +50,7 @@ GarageBandの仮想入力がある場合、この設定は不要です。
     await play("G4", { duration: 1 });
 
 - duration: 拍数（0.5なら八分音符）。playは音の長さだけ待ちます。
-- channel: MIDIチャンネル1〜16。省略すると1。
+- channel: MIDIチャンネルの数値は0〜15。CH1〜CH16定数を使えます（CH1 = 0）。省略するとCH1。
 - velocity: 強さ1〜127。省略すると90。
 - await beat(1): 1拍休む。
 - log("hello"): Consoleに表示。
@@ -126,13 +126,13 @@ for (const note of chord("E4", "minor7")) {
 - `rrange(min, max)`: random interpolation between two values.
 - `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
 - `lerp(a, b, t)`: linear interpolation; t is not clamped.
-`chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp(from, to, t)` は音名またはMIDI番号を補間し、playに渡せる整数MIDI番号を返します。最寄りの半音へ丸め、中間値は上の音になります。tは制限せず、補間結果が音域外なら丸める前にエラーにします。FM版のピッチオブジェクトとは異なり、Pitch Bendは送りません。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・1〜16のチャンネルです。
+`chord`は音名の配列を返し、自動では同時発音しません。生成音はMIDI 0〜127に制限し、不正な数値や整数範囲はエラーにします。ループのコールバック引数からも使えます。`noteLerp(from, to, t)` は音名またはMIDI番号を補間し、playに渡せる整数MIDI番号を返します。最寄りの半音へ丸め、中間値は上の音になります。tは制限せず、補間結果が音域外なら丸める前にエラーにします。FM版のピッチオブジェクトとは異なり、Pitch Bendは送りません。FM版playは秒・0始まりのチャンネルですが、MIDI版playは拍・0〜15（CH1〜CH16）のチャンネルです。
 
 ## FM / MIDI API differences
 
 | API | MIDI Playground |
 | --- | --- |
-| `play` | duration in beats (default 0.5), channel 1–16 (default 1), velocity 1–127 (default 90) |
+| `play` | duration in beats (default 0.5), channel 0–15 (default 0 / CH1), velocity 1–127 (default 90) |
 | `beat(count = 1)` | 0 < count <= 1024; global: captures BPM; loop-local: follows BPM changes |
 | `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
 | `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
@@ -204,16 +204,16 @@ Run fileで`/examples/01_multi_output.js`を選びRunしてください。手動
 ```js
 await enableSoundChip("ym2612");
 await enableSoundChip("sega-psg");
-const piano = midi.output("tetorica-ym2612", { channel: 1 });
-const bass = midi.output("tetorica-ym2612", { channel: 2 });
-const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+const piano = midi.output("tetorica-ym2612", { channel: CH1 });
+const bass = midi.output("tetorica-ym2612", { channel: CH2 });
+const lead = midi.output("tetorica-sega-psg", { channel: CH1 });
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.4 });
   await beat(0.5);
 });
 ```
 
-`midi.output()`は同期でハンドルを返し、最初の`play()`で接続します。同じポートの接続は共有します。外部ポートは表示名でも指定でき、不在・同名重複はエラーです。CHは1〜16（省略時1）で、ハンドル作成時に指定します。`play()`のdurationは拍単位で、Promiseは音の長さ分待って完了します。awaitは任意で、失敗はConsoleに表示してRunを停止します。追加のスクリプト接続は最大16ポート。MIDI画面に接続数を表示します。Keyboard・グローバルplayの選択先とは別です。
+`midi.output()`は同期でハンドルを返し、最初の`play()`で接続します。同じポートの接続は共有します。外部ポートは表示名でも指定でき、不在・同名重複はエラーです。channelは0〜15（省略時0 / CH1）で、ハンドル作成時に指定します。`play()`のdurationは拍単位で、Promiseは音の長さ分待って完了します。awaitは任意で、失敗はConsoleに表示してRunを停止します。追加のスクリプト接続は最大16ポート。MIDI画面に接続数を表示します。Keyboard・グローバルplayの選択先とは別です。
 
 現段階の`enableSoundChip()`はYM2612＋PSGの共有Rackを起動します。繰り返し呼んでも発音・設定はリセットしません。音源単位の有効化は後続です。Stopは演奏とスクリプト接続を停止し、Rackは有効なまま残します。MIDI画面でEnableを切り替える場合は先に演奏を停止します。Keyboardで鳴らす際はMIDI画面で出力を選択してください。
 
@@ -241,8 +241,8 @@ Applyは次のNote Onから反映し、発音中の音は変更しません。St
 **MIDI connections → Script output assignments**で`MIDI_OUTPUT_01`〜`04`に内蔵音源または外部ポートを割り当てます。コードでは引用符なしの識別子を使います。
 
 ```js
-const piano = midi.output(MIDI_OUTPUT_01, {channel: 1});
-const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
+const piano = midi.output(MIDI_OUTPUT_01, {channel: CH1});
+const bass = midi.output(MIDI_OUTPUT_01, {channel: CH2});
 ```
 
 割り当てはローカル保存します。変更すると演奏が停止するので、再度Runしてください。Run開始時の割り当てをApplyでも使います。使わないスロットは未設定で構いません。未設定のスロットを使うとハンドル作成時にエラーになります。外部ポートはIDと名前で記録し、不在・改名時は再割り当てが必要です。同名の別機器には自動接続しません。初回play時にもNativeで接続先を確認します。内蔵音源はコードの`await enableSoundChip(...)`か手動Enableが必要です。
@@ -304,7 +304,7 @@ FILESの`lib/README_jp.md`に手順を記載しています。`examples/09_libra
 | `polyPressure(note, value, {channel})` | 音ごとのaftertouch。整数0–127。 |
 | `send(bytes)` | Array／Uint8Arrayで完全なMIDIメッセージを1つ送信。 |
 
-channelはすべて整数1–16、既定1です。不正な数値・長さは拒否します。各APIは送信完了応答を待つPromiseを返します。発音時間を待つ`play()`とは異なります。順番や送信エラーを確認したい場合は`await`してください。awaitを省略した送信エラーもConsoleへ通知します。
+channelはすべて整数0–15、既定0（CH1）です。不正な数値・長さは拒否します。各APIは送信完了応答を待つPromiseを返します。発音時間を待つ`play()`とは異なります。順番や送信エラーを確認したい場合は`await`してください。awaitを省略した送信エラーもConsoleへ通知します。
 
 `noteOn()`はネイティブ側で追跡し、`noteOff()`・Stop・Run再開始で消音します。引数なしの直接inline・ブロック形式の`liveLoop`では、新APIもループに束縛されます。明示引数では`async ({noteOn, beat}) => { ... }`または`ctx.noteOn()`／`ctx.pg.noteOn()`を使ってください。stopLoop・同名ループのApply置換も、そのループのノートを解放します。別のループに所有権が移った同じ音を、古いループのnoteOffが消すことはありません。
 
@@ -313,13 +313,13 @@ channelはすべて整数1–16、既定1です。不正な数値・長さは拒
 raw `send()`はchannel messageに加えて、System Common（F1/F2/F3/F6）、Clock・Start・Continue・Stop・Active Sensing・Reset、F0…F7で囲んだSysExを、既存のネイティブMIDI出力へ送れます。1回最大65536バイト。データは7-bit、running status・複数メッセージの連結・途中へのrealtime挿入は非対応です。メッセージごとに呼んでください。rawのノートやペダルは自動追跡・cleanup対象外です。必要なNote Off等も自分で送信してください。rawでClock等を送ってもアプリのBPM・transportは変更しません。
 
 ```js
-await programChange(30, { channel: 1 });
-await noteOn("C4", { channel: 1, velocity: 100 });
-await pitchBend(0.5, { channel: 1 });
+await programChange(30, { channel: CH1 });
+await noteOn("C4", { channel: CH1, velocity: 100 });
+await pitchBend(0.5, { channel: CH1 });
 await beat(0.5);
-await noteOff("C4", { channel: 1 });
-await pitchBend(0, { channel: 1 });
-await cc(1, 64, { channel: 1 });
+await noteOff("C4", { channel: CH1 });
+await pitchBend(0, { channel: CH1 });
+await cc(1, 64, { channel: CH1 });
 await send(new Uint8Array([0xB0, 1, 0]));
 ```
 
@@ -360,3 +360,10 @@ FM2612 PlaygroundのPreset Object、TFI/VGIの`Uint8Array`／`ArrayBuffer`を使
 Presetは差分更新ではなく音色全体の置き換えです。省略値はalgorithm=7、feedback=0、左右出力ON、AMS/PMS=0、operatorはmulti=1、tl=127、rr=15、その他0／falseです。`sr`は`d2r`の別名で優先されます。SSG-EGとAM、AMS/PMSを保持しますが、音源全体のハードウェアLFO設定はこのAPIに含まれず、初期状態は無効です。PresetのpanとMIDI CC10の左右出力を組み合わせ、両方で有効な側に出力します。未知の音色フィールドはエラーになります。
 
 `examples/13_ym2612_voice.js`にJSDocとcontextを使った初期化例があります。Applyでは初期化状態を引き継ぎ、Runでは作り直します。
+
+
+## CH 番号の移行（2026-09-24）
+
+スクリプトの `channel` は **0〜15** に統一しました。`CH1 = 0`〜`CH16 = 15` の定数をグローバル・`pg`・ループの context で使えます。省略時は CH1 です。画面の楽器・鍵盤の CH1〜CH16 表示、raw `send()` のバイト列、音色 SysEx の転送形式は変わりません。
+
+自作コードの旧 `{channel: 1}` は `{channel: CH1}` または `{channel: 0}` に変更してください。旧数値から1を引きますが、変換済みのコードから再度引かないでください。自作・編集済みコードは自動で書き換えません。未編集の旧同梱サンプルのみ自動更新します。今回は番号体系の変更で、内蔵音源の物理声の割り当て方式は変更していません。

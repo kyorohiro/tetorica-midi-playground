@@ -51,7 +51,7 @@ The default lead repeats until Stop. `examples/melody.js` plays C, E, G, C. `exa
     await play("G4", { duration: 1 });
 
 - duration: length in beats (0.5 is an eighth note). play waits for that length.
-- channel: MIDI channel 1–16; defaults to 1.
+- channel: MIDI channel 0–15; defaults to 0 (CH1).
 - velocity: strength 1–127; defaults to 90.
 - await beat(1): rest for one beat.
 - log("hello"): print to Console.
@@ -129,13 +129,13 @@ for (const note of chord("E4", "minor7")) {
 - `rrange(min, max)`: random interpolation between two values.
 - `randInt(min, max)`: integer between ceil(min) and floor(max), inclusive.
 - `lerp(a, b, t)`: linear interpolation; t is not clamped.
-`chord` returns note names, not automatic simultaneous playback. Generated notes must fit MIDI 0–127. Invalid numeric ranges/values throw. These helpers also appear in loop callback arguments. `noteLerp(from, to, t)` returns the nearest integer MIDI note, ready for `play`. It accepts note names or MIDI numbers. Halfway values round upward; t is not clamped, but out-of-range results throw before rounding. This differs from the FM pitch-object return value and does not send Pitch Bend. Unlike the FM version (seconds, channel 0-based), MIDI `play` uses duration in beats and channels 1–16.
+`chord` returns note names, not automatic simultaneous playback. Generated notes must fit MIDI 0–127. Invalid numeric ranges/values throw. These helpers also appear in loop callback arguments. `noteLerp(from, to, t)` returns the nearest integer MIDI note, ready for `play`. It accepts note names or MIDI numbers. Halfway values round upward; t is not clamped, but out-of-range results throw before rounding. This differs from the FM pitch-object return value and does not send Pitch Bend. Unlike the FM version (seconds, channel 0-based), MIDI `play` uses duration in beats and channel indices 0–15 (CH1–CH16).
 
 ## FM / MIDI API differences
 
 | API | MIDI Playground |
 | --- | --- |
-| `play` | duration in beats (default 0.5), channel 1–16 (default 1), velocity 1–127 (default 90) |
+| `play` | duration in beats (default 0.5), channel 0–15 (default 0 / CH1), velocity 1–127 (default 90) |
 | `beat(count = 1)` | 0 < count <= 1024; global: captures BPM; loop-local: follows BPM changes |
 | `nextBeat()` | shared internal beat boundary; pending wait follows BPM changes |
 | `scale(root, name, octaves = 1)` | four documented scales; octaves must be an integer 1–11; every note must fit MIDI 0–127 |
@@ -192,13 +192,13 @@ External `play` now schedules native Note Off by Clock pulse count: durations ar
 
 ## Keyboard tab: audition before coding
 
-Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel 1–16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
+Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel CH1–CH16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
 
 Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input above the Code editor is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
 
 ## Built-in YM2612 audition (macOS trial)
 
-No DAW is required: choose **Tetorica YM2612** in **MIDI connections**. Internal outputs are always listed; selecting one enables the rack and connects automatically. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channels 1–16. Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Sustain, pitch bend and controllers are supported (see Low-level MIDI API). Preset file import is not supported yet.
+No DAW is required: choose **Tetorica YM2612** in **MIDI connections**. Internal outputs are always listed; selecting one enables the rack and connects automatically. Play in Keyboard or Run your script. The other port is **Tetorica Sega PSG**. YM2612 shares six FM voices across MIDI channel indices 0–15 (CH1–CH16). Sega PSG shares three square-wave voices across CH1–9 / 11–16; CH10 plays one fixed white-noise voice (any note number). PSG low notes clamp at about 109 Hz. Mixer provides source volume, pan, mute and master volume. Audio uses the default macOS output at enable time. Disable/re-enable after changing devices, then reconnect the MIDI output. Sustain, pitch bend and controllers are supported (see Low-level MIDI API). Preset file import is not supported yet.
 
 ## Multiple outputs and channels (trial)
 
@@ -207,16 +207,16 @@ Choose `/examples/01_multi_output.js` in Run file and press Run. It enables the 
 ```js
 await enableSoundChip("ym2612");
 await enableSoundChip("sega-psg");
-const piano = midi.output("tetorica-ym2612", { channel: 1 });
-const bass = midi.output("tetorica-ym2612", { channel: 2 });
-const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+const piano = midi.output("tetorica-ym2612", { channel: CH1 });
+const bass = midi.output("tetorica-ym2612", { channel: CH2 });
+const lead = midi.output("tetorica-sega-psg", { channel: CH1 });
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.4 });
   await beat(0.5);
 });
 ```
 
-`midi.output()` creates a handle synchronously. Its connection opens on the first `play()`, and handles using the same port share the connection. Names of external MIDI ports are also accepted; missing or ambiguous names are errors. Channels are 1–16 (default 1) and belong to the handle. `play()` uses beats for duration and returns a Promise that resolves after the note duration; awaiting it is optional, and failures are reported in Console and stop the run. At most 16 additional script output connections are allowed. The MIDI panel shows their count separately from the selected Keyboard/global-play output.
+`midi.output()` creates a handle synchronously. Its connection opens on the first `play()`, and handles using the same port share the connection. Names of external MIDI ports are also accepted; missing or ambiguous names are errors. Channels are 0–15 (default 0 / CH1) and belong to the handle. `play()` uses beats for duration and returns a Promise that resolves after the note duration; awaiting it is optional, and failures are reported in Console and stop the run. At most 16 additional script output connections are allowed. The MIDI panel shows their count separately from the selected Keyboard/global-play output.
 
 `enableSoundChip()` currently starts the shared YM2612 + Sega PSG rack even if only one chip is requested. Repeated calls preserve existing sound/settings. Per-chip enable is not implemented yet. Stop releases script connections/notes but keeps the rack enabled. Changing the MIDI-panel Enable setting stops playback first. To audition with Keyboard afterward, select its output in MIDI settings.
 
@@ -244,8 +244,8 @@ Apply affects the next Note On only; held notes retain their patch. Stop and rac
 In **MIDI connections → Script output assignments**, assign `MIDI_OUTPUT_01` through `MIDI_OUTPUT_04` to internal sound IDs or external MIDI ports. Then use the identifier without quotes:
 
 ```js
-const piano = midi.output(MIDI_OUTPUT_01, {channel: 1});
-const bass = midi.output(MIDI_OUTPUT_01, {channel: 2});
+const piano = midi.output(MIDI_OUTPUT_01, {channel: CH1});
+const bass = midi.output(MIDI_OUTPUT_01, {channel: CH2});
 ```
 
 Assignments are saved locally. Changing one stops playback; press Run again. Each Run takes a snapshot, also used by Apply. Unused slots may remain unassigned. Using an unassigned slot is an error when creating its handle. External devices are saved by ID and name; missing/renamed devices require reassignment, with no name-based fallback. Device availability is checked again on first play. Internal destinations still require `await enableSoundChip(...)` or manual Enable.
@@ -307,7 +307,7 @@ These functions send to the MIDI output selected in MIDI settings, like global `
 | `polyPressure(note, value, {channel})` | Per-note aftertouch, integer 0–127. |
 | `send(bytes)` | Array or Uint8Array containing one complete MIDI message. |
 
-Channels are integers 1–16, default 1. Invalid values and message lengths are rejected. Each function returns a Promise for the send acknowledgement, not the note duration. Use `await` for acknowledgement/order; fire-and-forget failures are also reported to Console. Existing `play()` still schedules its native Note Off and waits for the duration.
+Channels are integers 0–15, default 0 (CH1). Invalid values and message lengths are rejected. Each function returns a Promise for the send acknowledgement, not the note duration. Use `await` for acknowledgement/order; fire-and-forget failures are also reported to Console. Existing `play()` still schedules its native Note Off and waits for the duration.
 
 Native tracking releases `noteOn()` notes on noteOff, Stop and Run restart. Direct parameterless inline block liveLoop callbacks bind the new helpers locally. Explicit callbacks should use their helpers, e.g. `async ({noteOn, beat}) => { ... }`, `ctx.noteOn()` or `ctx.pg.noteOn()`. Loop stop and same-name Apply replacement release owned notes. An older loop's noteOff does not release a same-pitch note now owned by another loop.
 
@@ -316,13 +316,13 @@ Sustain (CC64) and sostenuto (CC66) enabled through `cc()` are released on Stop/
 Raw `send()` supports channel messages, System Common F1/F2/F3/F6, Clock/Start/Continue/Stop/Active Sensing/Reset, and complete F0…F7 SysEx through the existing native MIDI backend. Limit: 65536 bytes per message; data bytes must be 7-bit. Running status, concatenated messages and interleaved realtime bytes are unsupported; call send separately for each message. Raw notes and pedals are not tracked or automatically cleaned up: send their release messages yourself. Sending transport/clock bytes does not change the app's own BPM or transport.
 
 ```js
-await programChange(30, { channel: 1 });
-await noteOn("C4", { channel: 1, velocity: 100 });
-await pitchBend(0.5, { channel: 1 });
+await programChange(30, { channel: CH1 });
+await noteOn("C4", { channel: CH1, velocity: 100 });
+await pitchBend(0.5, { channel: CH1 });
 await beat(0.5);
-await noteOff("C4", { channel: 1 });
-await pitchBend(0, { channel: 1 });
-await cc(1, 64, { channel: 1 });
+await noteOff("C4", { channel: CH1 });
+await pitchBend(0, { channel: CH1 });
+await cc(1, 64, { channel: CH1 });
 await send(new Uint8Array([0xB0, 1, 0]));
 ```
 
@@ -348,3 +348,10 @@ An explicit channel updates only that MIDI channel. Omitting channel updates all
 Voice promises resolve after MIDI submission. Voice changes and subsequent notes on the same connection are applied in receive order; held notes retain their original voice. Presets replace the whole voice, rather than partially updating it. Defaults: algorithm 7, feedback 0, both pan sides enabled, AMS/PMS 0; operators use multi 1, tl 127, rr 15, other fields 0/false. `sr` overrides `d2r`. Logical operators may be zero-based arrays or one-based maps. SSG-EG, AM and AMS/PMS are preserved; global hardware LFO configuration is outside this voice API and starts disabled. Preset pan is intersected with MIDI CC10 left/right routing. Unsupported preset fields produce an error.
 
 See `examples/13_ym2612_voice.js` for JSDoc types and context-based initialization retained across Apply. Run creates fresh context. Stop and disabling/re-enabling the rack preserve the channel voice bank; closing the app resets it. Keep voice setup in project code for reproducibility.
+
+
+## Channel numbering migration (2026-09-24)
+
+Script `channel` values are now **0–15**. Prefer `CH1` through `CH16` (`CH1 = 0`, `CH16 = 15`), available globally, on `pg`, and in loop contexts. Omission defaults to CH1. UI instrument/keyboard labels remain CH1–CH16; raw `send()` bytes and the voice SysEx protocol are unchanged.
+
+Existing custom scripts using numeric channels must subtract 1 or replace their old number with the corresponding CH constant: old `{channel: 1}` becomes `{channel: CH1}` or `{channel: 0}`. Do not subtract twice. Saved custom code is not rewritten. Only exact, unedited bundled examples are upgraded automatically. This changes channel numbering, not the native voice allocation policy.

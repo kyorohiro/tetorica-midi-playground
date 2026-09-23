@@ -2,7 +2,7 @@
 type MidiNote = number | string;
 /** Durations are in beats. */
 interface MidiPlayOptions { duration?: number; velocity?: number; }
-interface MidiNoteOptions extends MidiPlayOptions { /** MIDI channel 1–16. */ channel?: number; }
+interface MidiNoteOptions extends MidiPlayOptions { /** MIDI channel index 0–15 (CH1–CH16). */ channel?: number; }
 /** Existing FM2612 Playground operator fields; omitted values use a quiet default. */
 interface Ym2612Operator {
   multi?: number; dt?: number; tl?: number; rs?: number; ar?: number;
@@ -40,7 +40,7 @@ declare function enableSoundChip(chip: 'ym2612' | 'sega-psg'): Promise<void>;
 declare function play(note: MidiNote, options?: MidiNoteOptions): Promise<void>;
 /** Use context.playOutput for loop ownership in imported or explicit callbacks. */
 declare function playOutput(output: MidiOutput, note: MidiNote, options?: MidiPlayOptions): Promise<void>;
-/** MIDI channels are 1–16; default is 1. */
+/** MIDI channel indices are 0–15; default is CH1 (0). */
 interface MidiChannelOptions { channel?: number; }
 interface MidiOnOptions extends MidiChannelOptions { /** Integer 1–127; default 90. */ velocity?: number; }
 interface MidiOffOptions extends MidiChannelOptions { /** Release velocity 0–127; default 0. */ velocity?: number; }
@@ -86,6 +86,23 @@ declare function onKeyboardPressKey(name: string, callback: (event: PlaygroundKe
 declare function onKeyboardReleaseKey(name: string, callback: (event: PlaygroundKeyEvent) => void | Promise<void>): void;
 /** Helpers passed to liveLoop. The parameter can be named context or destructured. */
 interface TetoricaContext {
+  CH1: typeof CH1;
+  CH2: typeof CH2;
+  CH3: typeof CH3;
+  CH4: typeof CH4;
+  CH5: typeof CH5;
+  CH6: typeof CH6;
+  CH7: typeof CH7;
+  CH8: typeof CH8;
+  CH9: typeof CH9;
+  CH10: typeof CH10;
+  CH11: typeof CH11;
+  CH12: typeof CH12;
+  CH13: typeof CH13;
+  CH14: typeof CH14;
+  CH15: typeof CH15;
+  CH16: typeof CH16;
+
   /** Shared user state, preserved by Apply and reset by Run. */
   context: PlaygroundContext;
   /** API namespace with this loop's timing and cancellation. */
@@ -111,3 +128,21 @@ interface PlaygroundAPI extends Omit<TetoricaContext, 'pg'> {
   liveLoop: typeof liveLoop;
 }
 declare const pg: PlaygroundAPI;
+
+/** Zero-based MIDI channel constants. */
+declare const CH1: 0;
+declare const CH2: 1;
+declare const CH3: 2;
+declare const CH4: 3;
+declare const CH5: 4;
+declare const CH6: 5;
+declare const CH7: 6;
+declare const CH8: 7;
+declare const CH9: 8;
+declare const CH10: 9;
+declare const CH11: 10;
+declare const CH12: 11;
+declare const CH13: 12;
+declare const CH14: 13;
+declare const CH15: 14;
+declare const CH16: 15;

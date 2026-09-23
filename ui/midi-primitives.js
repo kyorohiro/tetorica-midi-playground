@@ -4,9 +4,9 @@ const dataByte=(value,label)=>{
   if(!Number.isInteger(value)||value<0||value>127)throw Error(`${label} must be an integer 0–127`);
   return value;
 };
-const channelStatus=(status,channel=1)=>{
-  if(!Number.isInteger(channel)||channel<1||channel>16)throw Error('channel must be an integer 1–16');
-  return status|(channel-1);
+const channelStatus=(status,channel=0)=>{
+  if(!Number.isInteger(channel)||channel<0||channel>15)throw Error('channel must be an integer 0–15');
+  return status|channel;
 };
 export function validateMidiMessage(value){
   if(!Array.isArray(value)&&!(value instanceof Uint8Array))throw Error('send expects an Array or Uint8Array');
@@ -31,20 +31,20 @@ export function createMidiPrimitives({transmit,check=()=>{},onError=()=>{}}){
     return task;
   }
   return {
-    noteOn(note,{channel=1,velocity=90}={}){
+    noteOn(note,{channel=0,velocity=90}={}){
       dataByte(velocity,'velocity');if(velocity===0)throw Error('noteOn velocity must be 1–127');
       return sendMessage([channelStatus(0x90,channel),noteNumber(note),velocity]);
     },
-    noteOff(note,{channel=1,velocity=0}={}){return sendMessage([channelStatus(0x80,channel),noteNumber(note),dataByte(velocity,'velocity')]);},
-    cc(controller,value,{channel=1}={}){return sendMessage([channelStatus(0xb0,channel),dataByte(controller,'controller'),dataByte(value,'CC value')]);},
-    programChange(program,{channel=1}={}){return sendMessage([channelStatus(0xc0,channel),dataByte(program,'program')]);},
-    pitchBend(value,{channel=1}={}){
+    noteOff(note,{channel=0,velocity=0}={}){return sendMessage([channelStatus(0x80,channel),noteNumber(note),dataByte(velocity,'velocity')]);},
+    cc(controller,value,{channel=0}={}){return sendMessage([channelStatus(0xb0,channel),dataByte(controller,'controller'),dataByte(value,'CC value')]);},
+    programChange(program,{channel=0}={}){return sendMessage([channelStatus(0xc0,channel),dataByte(program,'program')]);},
+    pitchBend(value,{channel=0}={}){
       if(!Number.isFinite(value)||value< -1||value>1)throw Error('pitchBend must be between -1 and 1');
       const bend=Math.round(8192+value*(value<0?8192:8191));
       return sendMessage([channelStatus(0xe0,channel),bend&127,bend>>7]);
     },
-    channelPressure(value,{channel=1}={}){return sendMessage([channelStatus(0xd0,channel),dataByte(value,'pressure')]);},
-    polyPressure(note,value,{channel=1}={}){return sendMessage([channelStatus(0xa0,channel),noteNumber(note),dataByte(value,'pressure')]);},
+    channelPressure(value,{channel=0}={}){return sendMessage([channelStatus(0xd0,channel),dataByte(value,'pressure')]);},
+    polyPressure(note,value,{channel=0}={}){return sendMessage([channelStatus(0xa0,channel),noteNumber(note),dataByte(value,'pressure')]);},
     send(bytes){return sendMessage(validateMidiMessage(bytes),false);},
   };
 }

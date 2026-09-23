@@ -4,9 +4,9 @@ import {createMidiPrimitives,validateMidiMessage} from '../ui/midi-primitives.js
 
 test('MIDI primitives encode channels, note names, pressure and bend endpoints',async()=>{
  const messages=[];const api=createMidiPrimitives({transmit:async payload=>messages.push(payload)});
- await api.noteOn('C4',{channel:16,velocity:100});await api.noteOff(60,{channel:16});
- await api.cc(1,64,{channel:2});await api.programChange(30);
- await api.channelPressure(80,{channel:3});await api.polyPressure('C#4',81,{channel:4});
+ await api.noteOn('C4',{channel:15,velocity:100});await api.noteOff(60,{channel:15});
+ await api.cc(1,64,{channel:1});await api.programChange(30);
+ await api.channelPressure(80,{channel:2});await api.polyPressure('C#4',81,{channel:3});
  for(const bend of [-1,0,0.5,1])await api.pitchBend(bend);
  assert.deepEqual(messages.map(m=>m.bytes),[[0x9f,60,100],[0x8f,60,0],[0xb1,1,64],[0xc0,30],[0xd2,80],[0xa3,61,81],[0xe0,0,0],[0xe0,0,64],[0xe0,0,96],[0xe0,127,127]]);
  assert.ok(messages.every(m=>m.tracked));
@@ -19,7 +19,7 @@ test('invalid primitive values never reach transport',()=>{
   assert.throws(()=>api.programChange(bad));assert.throws(()=>api.channelPressure(bad));
   assert.throws(()=>api.polyPressure(60,bad));assert.throws(()=>api.noteOn(60,{velocity:bad}));assert.throws(()=>api.noteOff(60,{velocity:bad}));
  }
- for(const channel of [0,17,1.5,NaN,'1',null]){
+ for(const channel of [-1,16,1.5,NaN,'1',null]){
   for(const [name,args] of [['noteOn',[60]],['noteOff',[60]],['cc',[1,1]],['programChange',[1]],['pitchBend',[0]],['channelPressure',[1]],['polyPressure',[60,1]]])assert.throws(()=>api[name](...args,{channel}));
  }
  for(const value of [-1.1,1.1,NaN,Infinity,'0',null])assert.throws(()=>api.pitchBend(value));
@@ -46,7 +46,7 @@ test('bundled bend and CC examples emit balanced notes and restore their control
   const code=bundledExamples['/examples/'+name];
   assert.equal(code,await readFile(new URL('../ui/examples/'+name,import.meta.url),'utf8'));
   const messages=[];const api=createMidiPrimitives({transmit:async payload=>messages.push(payload.bytes)});
-  const helpers={...api,setBpm:()=>{},beat:async()=>{}};
+  const helpers={CH1:0,...api,setBpm:()=>{},beat:async()=>{}};
   await new (Object.getPrototypeOf(async()=>{}).constructor)(...Object.keys(helpers),code)(...Object.values(helpers));
   assert.ok(messages.some(m=>m[0]===0x90&&m[1]===60));assert.ok(messages.some(m=>m[0]===0x80&&m[1]===60));
   if(name.startsWith('11')){assert.deepEqual(messages[0],[0xc0,30]);assert.deepEqual(messages.at(-1),[0xe0,0,64]);}

@@ -57,23 +57,24 @@ export function createFileEditor(monaco, container, onChange) {
 }
 
 export const helperDocs = {
-  noteOn: 'noteOn(note, {channel: 1, velocity: 90}): hold a note on the selected MIDI output until noteOff or Stop.',
-  noteOff: 'noteOff(note, {channel: 1, velocity: 0}): release a note; release velocity 0–127.',
-  cc: 'cc(controller, value, {channel: 1}): control change; controller/value 0–127.',
-  programChange: 'programChange(program, {channel: 1}): raw MIDI program number 0–127.',
-  pitchBend: 'pitchBend(value, {channel: 1}): -1 minimum, 0 center, +1 maximum; range depends on receiver.',
-  channelPressure: 'channelPressure(value, {channel: 1}): channel aftertouch, 0–127.',
-  polyPressure: 'polyPressure(note, value, {channel: 1}): per-note aftertouch, 0–127.',
+  noteOn: 'noteOn(note, {channel: CH1, velocity: 90}): hold a note on the selected MIDI output until noteOff or Stop.',
+  noteOff: 'noteOff(note, {channel: CH1, velocity: 0}): release a note; release velocity 0–127.',
+  cc: 'cc(controller, value, {channel: CH1}): control change; controller/value 0–127.',
+  programChange: 'programChange(program, {channel: CH1}): raw MIDI program number 0–127.',
+  pitchBend: 'pitchBend(value, {channel: CH1}): -1 minimum, 0 center, +1 maximum; range depends on receiver.',
+  channelPressure: 'channelPressure(value, {channel: CH1}): channel aftertouch, 0–127.',
+  polyPressure: 'polyPressure(note, value, {channel: CH1}): per-note aftertouch, 0–127.',
   send: 'send(bytes): one complete MIDI message (Array or Uint8Array); raw notes are not automatically cleaned up.',
 
   context: 'Shared user state: context.value = ... . Preserved by Apply; reset by Run. Also available as pg.context.',
   pg: 'MIDI Playground API namespace: pg.play(), pg.liveLoop(), pg.midi.output(), pg.context.',
+  ...Object.fromEntries(Array.from({length:16},(_,i)=>[`CH${i+1}`,`MIDI channel ${i+1}: numeric index ${i}.`])),
   ...Object.fromEntries([1,2,3,4].map(i=>[`MIDI_OUTPUT_0${i}`,`Logical output slot ${i}: assign a destination in MIDI connections, then pass to midi.output().`])),
   enableSoundChip: 'await enableSoundChip("ym2612" | "sega-psg"): initialize the native sound rack. Existing audio is preserved.',
-  midi: 'midi.output(name, {channel: 1}): output handle. Internal IDs: tetorica-ym2612, tetorica-sega-psg. Call handle.play(note, {duration, velocity}). YM2612: handle.setVoice(preset), handle.loadVoice(path). Omit channel to set all channel voices.',
+  midi: 'midi.output(name, {channel: CH1}): output handle. Internal IDs: tetorica-ym2612, tetorica-sega-psg. Call handle.play(note, {duration, velocity}). YM2612: handle.setVoice(preset), handle.loadVoice(path). Omit channel to set all channel voices.',
   playOutput: 'playOutput(handle, note, options): use the loop-local helper for imported functions or explicit liveLoop callbacks.',
 
-  play: 'play(note, {duration, channel, velocity}): Promise<void>. Duration in beats; MIDI channel 1–16.',
+  play: 'play(note, {duration, channel, velocity}): Promise<void>. Duration in beats; MIDI channel 0–15.',
   beat: 'beat(count = 1): Promise<void>. Wait in beats.',
   nextBeat: 'nextBeat(): Promise<void>. Wait for the next internal beat.',
   setBpm: 'setBpm(bpm): change internal tempo.',

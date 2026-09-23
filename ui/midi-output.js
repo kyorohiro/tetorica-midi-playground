@@ -7,9 +7,9 @@ export function createOutputApi({request,play,send,onError,check=()=>{},owner,ma
   function output(name,{channel}={}) {
     const destination=resolveOutput(name,assignments);
     const ym2612=['tetorica-ym2612','Tetorica YM2612'].includes(destination.name);
-    const voiceChannel=channel===undefined&&ym2612?null:channel??1;
-    if(channel===undefined)channel=1;
-    if(!Number.isInteger(channel)||channel<1||channel>16)throw new Error('MIDI channel must be 1–16');
+    const voiceChannel=channel===undefined&&ym2612?null:channel??0;
+    if(channel===undefined)channel=0;
+    if(!Number.isInteger(channel)||channel<0||channel>15)throw new Error('MIDI channel must be 0–15');
     const handle=Object.freeze({play:(note,options)=>playOutput(handle,note,options),
       setVoice:(input,options)=>observe(setVoice(handle,input,options)),
       loadVoice:path=>observe((async()=>{check();const {data,format}=readVoice(path);return setVoice(handle,data,{format});})())});

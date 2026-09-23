@@ -1,3 +1,4 @@
+import {toNativeNote} from './midi-channels.js';
 import {isBinaryFile,binaryFile,fileBytes,filePreview} from './project-assets.js';
 import {exportProject,importProject,MAX_PROJECT_BYTES} from './project-cassette.js';
 import {mergeExamples} from './example-migrations.js';
@@ -175,7 +176,7 @@ async function start(){
     }
     else if(data.type==='note'||data.type==='midi'){
       if(++inFlight>64){await run(stop);ui.setStatus('Too many concurrent notes');return;}
-      try{await enqueueMidi(()=>invoke(data.type==='midi'?'send_midi':'play_midi_note',{...data.payload,runId}));current.postMessage({type:'reply',id:data.id});}
+      try{await enqueueMidi(()=>invoke(data.type==='midi'?'send_midi':'play_midi_note',{...(data.type==='note'?toNativeNote(data.payload):data.payload),runId}));current.postMessage({type:'reply',id:data.id});}
       catch(e){if(current===worker)current.postMessage({type:'reply',id:data.id,error:String(e)});}
       finally{inFlight--;}
     }else if(data.type==='release'){

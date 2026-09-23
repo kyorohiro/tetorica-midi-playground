@@ -1,7 +1,7 @@
 // Run this file: the built-in YM2612 plays a repeating phrase. No DAW needed.
 // Try context. and instrument. completion, or change the notes and duration.
 await enableSoundChip("ym2612");
-const piano = midi.output("tetorica-ym2612", { channel: 1 });
+const piano = midi.output("tetorica-ym2612", { channel: CH1 });
 
 /**
  * Play a phrase with loop-local timing and cancellation.

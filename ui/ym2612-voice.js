@@ -49,8 +49,7 @@ export function unpack7(bytes){
   return Uint8Array.from(result);
 }
 export function voiceSysEx(input,channel,options){
-  if(channel!==null)integer('channel',channel,16);
-  if(channel===0)throw Error('MIDI channel must be 1–16');
+  if(channel!==null)integer('channel',channel,15);
   // 7D 'TET' protocol 1, command 1, target 0..15 / 127=all, voice version 1.
-  return [0xf0,0x7d,0x54,0x45,0x54,1,1,channel===null?127:channel-1,1,...pack7(voiceBytes(input,options)),0xf7];
+  return [0xf0,0x7d,0x54,0x45,0x54,1,1,channel===null?127:channel,1,...pack7(voiceBytes(input,options)),0xf7];
 }

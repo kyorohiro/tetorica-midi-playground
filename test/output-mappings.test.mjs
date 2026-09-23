@@ -23,9 +23,9 @@ test('run snapshots are immutable and two slots targeting one port share routing
  const api=createOutputApi({mappings,request:async(type,p)=>{requests++;assert.deepEqual(p,{name:'Synth',portId:'42'});return 9;},
    play:createMidiHelpers({sleep:async()=>{},log:()=>{}}).play,send:async p=>sent.push(p),onError:assert.fail});
  mappings.MIDI_OUTPUT_01=null;target.id='changed';
- const a=api.midi.output(outputSlots.MIDI_OUTPUT_01),b=api.midi.output(outputSlots.MIDI_OUTPUT_02,{channel:2});
+ const a=api.midi.output(outputSlots.MIDI_OUTPUT_01),b=api.midi.output(outputSlots.MIDI_OUTPUT_02,{channel:1});
  await Promise.all([a.play('C4'),b.play('C4')]);
- assert.equal(requests,1);assert.deepEqual(sent.map(n=>[n.route,n.channel]),[[9,1],[9,2]]);
+ assert.equal(requests,1);assert.deepEqual(sent.map(n=>[n.route,n.channel]),[[9,0],[9,1]]);
 });
 
 test('assignment UI stops before saving and retains unavailable ports',async()=>{

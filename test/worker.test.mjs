@@ -234,8 +234,8 @@ test('outer output handles preserve parallel loop ownership across await',async(
   const code=`
    await enableSoundChip('ym2612');
    await enableSoundChip('sega-psg');
-   const fm=midi.output('tetorica-ym2612',{channel:2});
-   const psg=midi.output('tetorica-sega-psg',{channel:3});
+   const fm=midi.output('tetorica-ym2612',{channel:1});
+   const psg=midi.output('tetorica-sega-psg',{channel:2});
    liveLoop('fm',async()=>{await beat(0.004);await fm.play('C4',{duration:0.002});await beat(10);});
    liveLoop('psg',async()=>{await beat(0.002);await psg.play('E4',{duration:0.002});await beat(10);});
    await beat(0.05);stopAllLoops();
@@ -250,7 +250,7 @@ test('outer output handles preserve parallel loop ownership across await',async(
    if(m.type==='done'){clearTimeout(timer);resolve();}
   });
  });
- assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,2,1],[2,3,2]]);
+ assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),[[1,1,1],[2,2,2]]);
  assert.deepEqual(released,[1,2]);
  }finally{await w.terminate();}
 });
@@ -273,7 +273,7 @@ for(const exampleName of ['01_multi_output.js','02_assigned_outputs.js','03_cont
   });
  });
  assert.deepEqual(chips,exampleName==='03_context_jsdoc.js'?['ym2612']:['ym2612','sega-psg']);
- assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),exampleName==='03_context_jsdoc.js'?[[1,1,1]]:[[1,1,1],[1,2,2],[2,1,3]]);
+ assert.deepEqual(notes.map(n=>[n.route,n.channel,n.owner]).sort(),exampleName==='03_context_jsdoc.js'?[[1,0,1]]:[[1,0,1],[1,1,2],[2,0,3]]);
  }finally{await w.terminate();}
 });
 
@@ -282,13 +282,13 @@ test('worker exposes logical output identifiers and sends selected port identity
  try{await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('slot timeout')),3000);
   w.on('error',reject);w.on('message',m=>{
-   if(m.type==='ready')w.postMessage({type:'run',bpm:120,outputMappings:{MIDI_OUTPUT_01:{kind:'port',id:'saved-id',name:'Piano'}},code:`const p=midi.output(MIDI_OUTPUT_01,{channel:4}); await p.play('C4',{duration:0.002});`});
+   if(m.type==='ready')w.postMessage({type:'run',bpm:120,outputMappings:{MIDI_OUTPUT_01:{kind:'port',id:'saved-id',name:'Piano'}},code:`const p=midi.output(MIDI_OUTPUT_01,{channel:3}); await p.play('C4',{duration:0.002});`});
    if(m.type==='output'){outputs.push(m.payload);w.postMessage({type:'reply',id:m.id,value:3});}
    if(m.type==='note'){notes.push(m.payload);w.postMessage({type:'reply',id:m.id});}
    if(m.type==='error'){clearTimeout(timer);reject(Error(m.text));}
    if(m.type==='done'){clearTimeout(timer);resolve();}
   });
- });assert.deepEqual(outputs,[{name:'Piano',portId:'saved-id'}]);assert.equal(notes[0].route,3);assert.equal(notes[0].channel,4);
+ });assert.deepEqual(outputs,[{name:'Piano',portId:'saved-id'}]);assert.equal(notes[0].route,3);assert.equal(notes[0].channel,3);
  }finally{await w.terminate();}
 });
 
@@ -375,13 +375,13 @@ test('context init example reuses initialization on Apply and resets on Run',asy
 
 test('low-level globals, pg and explicit loop helpers use the Worker MIDI transport',async()=>{
  const result=await runLoopScript(`
- await programChange(30,{channel:2});
- await pg.noteOn('C4',{channel:2,velocity:100});
- await pg.cc(7,100,{channel:2});
- await pitchBend(.5,{channel:2});
- await channelPressure(80,{channel:2});
- await polyPressure('C4',81,{channel:2});
- await noteOff('C4',{channel:2});
+ await programChange(30,{channel:1});
+ await pg.noteOn('C4',{channel:1,velocity:100});
+ await pg.cc(7,100,{channel:1});
+ await pitchBend(.5,{channel:1});
+ await channelPressure(80,{channel:1});
+ await polyPressure('C4',81,{channel:1});
+ await noteOff('C4',{channel:1});
  await send(new Uint8Array([0xf8]));
  liveLoop('held',async()=>{await noteOn('E4');await beat(10);await noteOn('F4');});
  pg.liveLoop('explicit',async ctx=>{await ctx.pg.noteOn('G4');await ctx.beat(10);});
@@ -413,5 +413,5 @@ test('Worker loads imported binary voice relative to Run file and sends it befor
  });}finally{await w.terminate();}
  assert.deepEqual(events.map(e=>e.type),['output','midi','note']);
  assert.deepEqual(events[1].payload,{route:7,tracked:false,bytes:voiceSysEx(preset,null)});
- assert.equal(events[2].payload.route,7);assert.equal(events[2].payload.channel,1);
+ assert.equal(events[2].payload.route,7);assert.equal(events[2].payload.channel,0);
 });

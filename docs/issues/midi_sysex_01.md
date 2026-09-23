@@ -1,3 +1,5 @@
+> 2026-09-24更新：公開APIのchannelは0〜15（CH1〜CH16）へ移行済み。以下の旧1〜16表記は当時の要件。現行仕様と移行は [channel_index_01.md](channel_index_01.md) を参照。SysExのwire形式は変更なし。
+
 # YM2612 voice transfer via MIDI SysEx
 
 ## 実装状況（2026-09-22）

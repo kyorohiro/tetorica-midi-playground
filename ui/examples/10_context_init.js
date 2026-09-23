@@ -15,7 +15,7 @@ const state = /** @type {ContextInitState} */ (pg.context);
 
 if (!state.instrument) {
   await pg.enableSoundChip("ym2612");
-  state.instrument = pg.midi.output("tetorica-ym2612", { channel: 1 });
+  state.instrument = pg.midi.output("tetorica-ym2612", { channel: CH1 });
   state.hitCount = 0;
   pg.log("Initialized pg.context.");
 }

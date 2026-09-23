@@ -4,9 +4,9 @@ await enableSoundChip("ym2612");
 await enableSoundChip("sega-psg");
 setBpm(120);
 
-const piano = midi.output("tetorica-ym2612", { channel: 1 });
-const bass = midi.output("tetorica-ym2612", { channel: 2 });
-const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+const piano = midi.output("tetorica-ym2612", { channel: CH1 });
+const bass = midi.output("tetorica-ym2612", { channel: CH2 });
+const lead = midi.output("tetorica-sega-psg", { channel: CH1 });
 
 liveLoop("piano", async () => {
   piano.play(cycle(["C4", "E4", "G4", "E4"]), { duration: 0.4, velocity: 80 });

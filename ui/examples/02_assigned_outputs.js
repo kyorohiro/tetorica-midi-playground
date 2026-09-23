@@ -4,9 +4,9 @@
 // and "tetorica-sega-psg" with MIDI_OUTPUT_02 in the output calls below.
 await enableSoundChip("ym2612");
 await enableSoundChip("sega-psg");
-const piano = midi.output("tetorica-ym2612", { channel: 1 });
-const bass = midi.output("tetorica-ym2612", { channel: 2 });
-const lead = midi.output("tetorica-sega-psg", { channel: 1 });
+const piano = midi.output("tetorica-ym2612", { channel: CH1 });
+const bass = midi.output("tetorica-ym2612", { channel: CH2 });
+const lead = midi.output("tetorica-sega-psg", { channel: CH1 });
 liveLoop("piano", async () => {
   piano.play("C4", { duration: 0.4 });
   await beat(0.5);

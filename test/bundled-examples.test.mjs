@@ -27,11 +27,11 @@ async function execute(name,mappings={}) {
  });}finally{await w.terminate();}
 }
 for(const [name,expected,owners] of [
- ['04_first_note.js',[[1,1,60]],[]],
- ['05_live_loop.js',[[1,1,60]],[1]],
- ['06_multi_channel.js',[[1,1,60],[1,2,48]],[1,2]],
- ['07_external_output.js',[[1,1,60]],[]],
- ['08_output_slots.js',[[1,1,60],[2,2,67]],[]],
+ ['04_first_note.js',[[1,0,60]],[]],
+ ['05_live_loop.js',[[1,0,60]],[1]],
+ ['06_multi_channel.js',[[1,0,60],[1,1,48]],[1,2]],
+ ['07_external_output.js',[[1,0,60]],[]],
+ ['08_output_slots.js',[[1,0,60],[2,1,67]],[]],
 ])test(`${name}: routes, channels, notes and loop release`,async()=>{
  const result=await execute(name,assigned);
  assert.deepEqual(result.notes.map(n=>[n.route,n.channel,n.note]).sort(),expected);

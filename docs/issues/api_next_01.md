@@ -1,3 +1,5 @@
+> 2026-09-24更新：公開APIのchannelは0〜15（CH1〜CH16）へ移行済み。以下の旧1〜16表記は当時の要件。現行仕様と移行は [channel_index_01.md](channel_index_01.md) を参照。SysExのwire形式は変更なし。
+
 Tetorica MIDI Playground の MIDI API を拡張してください。
 
 現在は play() を中心とした高レベルAPIしかなく、MIDIを直接操作するには不足しています。

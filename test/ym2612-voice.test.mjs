@@ -21,7 +21,7 @@ test('transport preserves SSG, raw detune, AM, B4 and sr alias without lossy TFI
   const voice={algorithm:7,b4:0xf7,operators:[{dt:4,ssg:15,am:true,sr:25}, {}, {}, {}]};
   const bytes=voiceBytes(voice);
   assert.equal(bytes[2],0xf7);assert.equal(bytes[3],1);assert.equal(bytes[5],4);assert.equal(bytes[10],25);assert.equal(bytes[13],15);
-  const message=voiceSysEx(voice,16);assert.equal(message[7],15);assert.ok(message.slice(1,-1).every(n=>n<128));
+  const message=voiceSysEx(voice,15);assert.equal(message[7],15);assert.ok(message.slice(1,-1).every(n=>n<128));
   assert.deepEqual(unpack7(message.slice(9,-1)),bytes);
   assert.equal(voiceBytes({...voice,pan:{left:false}})[2],0x77);
   const allBytes=Uint8Array.from({length:256},(_,i)=>i);assert.deepEqual(unpack7(pack7(allBytes)),allBytes);
@@ -32,16 +32,16 @@ test('invalid and unsupported fields are rejected before transport',()=>{
   for(const format of ['tfi','vgi'])assert.throws(()=>voiceBytes(new Uint8Array(4),{format}));
   assert.throws(()=>voiceBytes('binary',{format:'tfi'}));
   assert.throws(()=>voiceBytes(new Uint8Array(42),{format:'unknown'}));
-  for(const channel of [0,17,undefined,-1])assert.throws(()=>voiceSysEx({},channel));
+  for(const channel of [16,17,undefined,-1])assert.throws(()=>voiceSysEx({},channel));
 });
 test('handle voice and notes use the same route; omitted channel sets all while notes use CH1',async()=>{
   const events=[];
   const api=createOutputApi({request:async(type,payload)=>{events.push({type,...payload});return 42;},send:async payload=>events.push({type:'note',...payload}),play:createMidiHelpers({sleep:async()=>{},log:()=>{}}).play,onError:()=>{}});
-  const all=api.midi.output('tetorica-ym2612',{}),ch2=api.midi.output('tetorica-ym2612',{channel:2});
+  const all=api.midi.output('tetorica-ym2612',{}),ch2=api.midi.output('tetorica-ym2612',{channel:1});
   await all.setVoice(preset);await all.play('C4');await ch2.setVoice(preset);await ch2.play('E4');
   assert.deepEqual(events.map(e=>e.type),['output','midi','note','midi','note']);
   assert.deepEqual(events.filter(e=>e.type==='midi').map(e=>[e.route,e.bytes[7],e.tracked]),[[42,127,false],[42,1,false]]);
-  assert.deepEqual(events.filter(e=>e.type==='note').map(e=>[e.route,e.channel]),[[42,1],[42,2]]);
+  assert.deepEqual(events.filter(e=>e.type==='note').map(e=>[e.route,e.channel]),[[42,0],[42,1]]);
   const previous=events.length;
   await assert.rejects(api.midi.output('tetorica-sega-psg').setVoice(preset),/YM2612/);
   await assert.rejects(all.setVoice({operators:[{ssg:16}]}));assert.equal(events.length,previous);

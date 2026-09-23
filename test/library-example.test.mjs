@@ -17,15 +17,15 @@ test('library example resolves from FILES, passes its destination and awaits the
  let callback;const output={},enabled=[],destinations=[];
  try {
   const AsyncFunction=Object.getPrototypeOf(async()=>{}).constructor;
-  await new AsyncFunction('enableSoundChip','midi','liveLoop',prepared.code)(
+  await new AsyncFunction('enableSoundChip','midi','liveLoop','CH1',prepared.code)(
    async chip=>enabled.push(chip),
    {output:(name,options)=>{destinations.push([name,options]);return output;}},
-   (name,fn)=>{assert.equal(name,'library-phrase');callback=fn;},
+   (name,fn)=>{assert.equal(name,'library-phrase');callback=fn;},0,
   );
   const events=[];
   await callback({playOutput:async(o,n,opts)=>{assert.equal(o,output);events.push([n,opts.duration,opts.velocity]);},beat:async n=>events.push(['gap',n])});
   assert.deepEqual(enabled,['ym2612']);
-  assert.deepEqual(destinations,[['tetorica-ym2612',{channel:1}]]);
+  assert.deepEqual(destinations,[['tetorica-ym2612',{channel:0}]]);
   assert.deepEqual(events,[['C4',0.5,90],['E4',0.5,90],['G4',0.5,90],['gap',1]]);
   // A stopped loop's scoped helper rejects: the imported function must not swallow it.
   let calls=0;

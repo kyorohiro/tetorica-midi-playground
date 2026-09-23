@@ -46,10 +46,10 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     };
   }
   async function beat(count=1){await sleep(positive(count,'beat count',1024)*60000/bpm);}
-  async function play(note,{duration=0.5,channel=1,velocity=90}={},sender=send){
+  async function play(note,{duration=0.5,channel=0,velocity=90}={},sender=send){
     const durationMs=Math.round(positive(duration,'duration',128)*60000/bpm);
     if(durationMs<1||durationMs>10000)throw new Error('Note duration must be 1–10000 ms');
-    if(!Number.isInteger(channel)||channel<1||channel>16||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid channel or velocity');
+    if(!Number.isInteger(channel)||channel<0||channel>15||!Number.isInteger(velocity)||velocity<1||velocity>127)throw new Error('Invalid channel or velocity');
     await sender({note:noteNumber(note),channel,velocity,durationMs});
     await sleep(durationMs);
   }
