@@ -15,6 +15,11 @@ interface Ym2612Preset {
   operators?: Ym2612Operator[] | {[operator: number]: Ym2612Operator};
 }
 interface MidiOutput {
+  /** This handle's destination and channel; resolves when the message is sent. */
+  noteOn(note: MidiNote, options?: {velocity?: number}): Promise<void>;
+  noteOff(note: MidiNote, options?: {velocity?: number}): Promise<void>;
+  pitchBend(value: number): Promise<void>;
+  cc(controller: number, value: number): Promise<void>;
   /** Play on this handle's channel. Resolves after the duration; await is optional. */
   play(note: MidiNote, options?: MidiPlayOptions): Promise<void>;
   /** YM2612 only. Next Note On uses this voice; held notes keep their voice. With no channel, updates all 16 channels. Resolves after MIDI submission. */
@@ -31,11 +36,13 @@ declare const MIDI_OUTPUT_02: MidiOutputSlot;
 declare const MIDI_OUTPUT_03: MidiOutputSlot;
 declare const MIDI_OUTPUT_04: MidiOutputSlot;
 declare const midi: {
+  enableSoundChip: typeof enableSoundChip;
   /** Create an output handle; opens on first play/setVoice. YM2612 without channel: play on CH1 with native voice allocation, setVoice on all channels. Other outputs default to CH1. */
   output(destination: MidiDestination, options?: {channel?: number}): MidiOutput;
 };
 /** Enable the shared native sound rack; repeated calls preserve settings. */
-declare function enableSoundChip(chip: 'ym2612' | 'sega-psg'): Promise<void>;
+/** roundRobin false pins YM2612 CH1..CH6; higher MIDI channels are silent. Mode changes silence notes. */
+declare function enableSoundChip(chip: 'ym2612' | 'sega-psg' | 'tetorica-ym2612' | 'tetorica-sega-psg', options?: {roundRobin?: boolean}): Promise<void>;
 /** Play using the MIDI output selected in the UI. */
 declare function play(note: MidiNote, options?: MidiNoteOptions): Promise<void>;
 /** Use context.playOutput for loop ownership in imported or explicit callbacks. */

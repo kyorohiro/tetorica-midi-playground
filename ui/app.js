@@ -39,7 +39,7 @@ function refreshRunFiles(){
   $('runFile').value=runPath;
 }
 refreshRunFiles();
-$('runFile').onchange=()=>{runPath=$('runFile').value;persist();};
+$('runFile').onchange=()=>{runPath=$('runFile').value;openFile(runPath);};
 $('bpm').addEventListener('change',()=>persist());
 $('clockMode').addEventListener('change',()=>persist());
 let codeEditor=null;

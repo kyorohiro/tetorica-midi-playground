@@ -196,6 +196,7 @@ pub struct Synth {
     chip: Chip,
     voices: [Voice; 6],
     next_voice: usize,
+    round_robin: bool,
     serial: u64,
     ratio: f64,
     phase: f64,
@@ -217,7 +218,7 @@ impl Synth {
             modulation_phase:0.0,control_tick:0,rate,
             patches: [FmPatch::default(); 16],
             chip,
-            voices: [Voice::default(); 6],next_voice:0,
+            voices: [Voice::default(); 6],next_voice:0,round_robin:true,
             serial: 0,
             ratio,
             phase: 0.0,
@@ -227,6 +228,14 @@ impl Synth {
             dc_output: [0.0; 2],
             dc_decay: (-2.0 * std::f64::consts::PI * 10.0 / rate as f64).exp() as f32,
         })
+    }
+    pub fn set_round_robin(&mut self, enabled: bool) {
+        if self.round_robin != enabled {
+            let controls=self.controls;
+            self.panic();
+            self.controls=controls;
+            self.round_robin = enabled;
+        }
     }
     pub fn set_patch(&mut self, channel: u8, patch: FmPatch) -> Result<(), String> {
         patch.validate()?;
@@ -312,9 +321,9 @@ impl Synth {
         let ch=bytes[0]&15;let note=bytes[1];
         match bytes[0]&0xf0 {
             0x90 if bytes[2]>0=>{
-                let v=self.voices.iter().position(|v|v.held&&v.channel==ch&&v.note==note)
+                let v=if !self.round_robin {if ch>=6 {return;} ch as usize} else {self.voices.iter().position(|v|v.held&&v.channel==ch&&v.note==note)
                     .or_else(||(0..6).map(|n|(self.next_voice+n)%6).find(|i|!self.voices[*i].held))
-                    .unwrap_or_else(||(0..6).min_by_key(|i|self.voices[*i].age).unwrap());
+                    .unwrap_or_else(||(0..6).min_by_key(|i|self.voices[*i].age).unwrap())};
                 self.next_voice=(v+1)%6;
                 self.start(v,ch,note,bytes[2]);
             },
@@ -526,6 +535,21 @@ impl Mixer {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fixed_channels_and_mode_changes() {
+        let mut s=Synth::new(48000).unwrap();
+        s.set_round_robin(false);
+        s.midi(&[0x93,60,100]);
+        assert!(s.voices[3].held);assert_eq!(s.active(),8);
+        s.midi(&[0x93,64,100]);s.midi(&[0x83,60,0]);
+        assert!(s.voices[3].held);assert_eq!(s.voices[3].note,64);
+        s.midi(&[0x9f,70,100]);assert_eq!(s.active(),8);
+        s.set_round_robin(false);assert_eq!(s.active(),8);
+        s.panic();s.midi(&[0x95,60,100]);assert!(s.voices[5].held);
+        s.set_round_robin(true);assert_eq!(s.active(),0);
+        s.midi(&[0x9f,60,100]);assert_eq!(s.active(),1<<15);
+    }
+
     use super::*;
     fn test_instrument(psg:bool,rate:u32)->Instrument {
         if psg {Instrument::SegaPsg(Psg::new(rate).unwrap())} else {Instrument::Ym2612(Synth::new(rate).unwrap())}

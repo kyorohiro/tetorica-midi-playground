@@ -365,3 +365,26 @@ Tests
 実装前に、既存のFM2612 Playground Preset Object、TFI/VGI parser/exporter、MIDI output、CoreMIDI virtual destination、Native YM2612 Audio Engineの実装を確認してください。
 
 既存コードを最大限再利用し、必要以上のリファクタリングは避けてください。
+
+## YM2612 の物理 CH 固定モード
+
+```js
+await midi.enableSoundChip("tetorica-ym2612", {roundRobin: false});
+const lead = midi.output("tetorica-ym2612", {channel: CH4});
+await lead.loadVoice("./lead.tfi");
+await lead.play("C4", {duration: 1, velocity: 100});
+```
+
+- `roundRobin: true`（オプション省略時も true）は従来の自動発音割り当て。
+- `false` は MIDI CH1〜CH6（数値0〜5）を物理 CH1〜CH6に固定する。
+  各 CH は単音で、次の Note On が前の発音を置き換える。CH7〜CH16 は発音しない。
+- 省略した output channel は CH1。複数ハンドルでも同じ物理 CH を共有する。
+- モード変更時は YM2612 の発音・余韻を止める。同じモードの再指定では消音しない。
+  音色・コントローラー設定は保持する。再現性のため Run の冒頭でモードを明示する。
+- PSG、外部 MIDI 出力にはこの設定を適用しない。CH3 special や DAC は追加対応ではない。
+- 通常の `noteOn` / `noteOff` / CC / Pitch Bend / `setVoice` をそのまま使う。
+  チップへ直接レジスタを書き込む API との併用を安全にする予約機能ではない。
+
+既存の `enableSoundChip("ym2612", {roundRobin: false})` でも設定できる。
+設定はネイティブ音声キューに MIDI と同じ順序で入り、コア側で割り当てを切り替える。
+Stop はモードを維持し、音源の無効化・再生成で既定に戻る。

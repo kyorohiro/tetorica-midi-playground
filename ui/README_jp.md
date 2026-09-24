@@ -367,3 +367,22 @@ Presetは差分更新ではなく音色全体の置き換えです。省略値�
 スクリプトの `channel` は **0〜15** に統一しました。`CH1 = 0`〜`CH16 = 15` の定数をグローバル・`pg`・ループの context で使えます。省略時は CH1 です。画面の楽器・鍵盤の CH1〜CH16 表示、raw `send()` のバイト列、音色 SysEx の転送形式は変わりません。
 
 自作コードの旧 `{channel: 1}` は `{channel: CH1}` または `{channel: 0}` に変更してください。旧数値から1を引きますが、変換済みのコードから再度引かないでください。自作・編集済みコードは自動で書き換えません。未編集の旧同梱サンプルのみ自動更新します。今回は番号体系の変更で、内蔵音源の物理声の割り当て方式は変更していません。
+
+## YM2612 の物理 CH 固定モード
+
+```js
+await midi.enableSoundChip("tetorica-ym2612", {roundRobin: false});
+const lead = midi.output("tetorica-ym2612", {channel: CH4});
+await lead.loadVoice("./lead.tfi");
+await lead.play("C4", {duration: 1, velocity: 100});
+```
+
+- `roundRobin: true`（オプション省略時も true）は従来の自動発音割り当て。
+- `false` は MIDI CH1〜CH6（数値0〜5）を物理 CH1〜CH6に固定する。
+  各 CH は単音で、次の Note On が前の発音を置き換える。CH7〜CH16 は発音しない。
+- 省略した output channel は CH1。複数ハンドルでも同じ物理 CH を共有する。
+- モード変更時は YM2612 の発音・余韻を止める。同じモードの再指定では消音しない。
+  音色・コントローラー設定は保持する。再現性のため Run の冒頭でモードを明示する。
+- PSG、外部 MIDI 出力にはこの設定を適用しない。CH3 special や DAC は追加対応ではない。
+- 通常の `noteOn` / `noteOff` / CC / Pitch Bend / `setVoice` をそのまま使う。
+  チップへ直接レジスタを書き込む API との併用を安全にする予約機能ではない。

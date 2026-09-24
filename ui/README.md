@@ -355,3 +355,7 @@ See `examples/13_ym2612_voice.js` for JSDoc types and context-based initializati
 Script `channel` values are now **0–15**. Prefer `CH1` through `CH16` (`CH1 = 0`, `CH16 = 15`), available globally, on `pg`, and in loop contexts. Omission defaults to CH1. UI instrument/keyboard labels remain CH1–CH16; raw `send()` bytes and the voice SysEx protocol are unchanged.
 
 Existing custom scripts using numeric channels must subtract 1 or replace their old number with the corresponding CH constant: old `{channel: 1}` becomes `{channel: CH1}` or `{channel: 0}`. Do not subtract twice. Saved custom code is not rewritten. Only exact, unedited bundled examples are upgraded automatically. This changes channel numbering, not the native voice allocation policy.
+
+## Fixed YM2612 channels
+
+Use `await midi.enableSoundChip("tetorica-ym2612", {roundRobin: false})` before playing to map MIDI CH1–CH6 to physical voices 1–6. Each voice is monophonic; CH7–CH16 are silent. The existing global `enableSoundChip("ym2612", options)` also accepts this option. Omitted/true keeps automatic allocation. Changing modes silences YM2612 notes; reapplying the same mode does not. This does not enable CH3 special mode or change PSG/external MIDI.

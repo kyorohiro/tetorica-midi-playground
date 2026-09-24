@@ -29,3 +29,32 @@ test('stop while output opens prevents late Note On; send failures are reported 
  bad.midi.output('missing').play('C4');
  await new Promise(r=>setTimeout(r,0));assert.match(errors[0].message,/missing port/);
 });
+
+test('handle primitives send to their own output/channel and share the opened connection',async()=>{
+ const requests=[];
+ const api=createOutputApi({request:async(type,payload)=>{requests.push({type,payload});return type==='output'?71:undefined;},play:()=>{},send:()=>{},onError:()=>{}});
+ const out=api.midi.output('External MIDI',{channel:4});
+ await out.noteOn('C4');await out.pitchBend(1);await out.cc(64,127);await out.noteOff('C4');
+ assert.equal(requests.filter(r=>r.type==='output').length,1);
+ const messages=requests.filter(r=>r.type==='midi').map(r=>r.payload);
+ assert(messages.every(p=>p.route===71&&p.tracked===true));
+ assert.deepEqual(messages.map(p=>p.bytes),[[0x94,60,100],[0xe4,127,127],[0xb4,64,127],[0x84,60,0]]);
+});
+
+test('handle primitives do not send after cancellation during connection opening',async()=>{
+ let finish,active=true;const cancelled=Symbol('cancelled'),sent=[];
+ const api=createOutputApi({check:()=>{if(!active)throw cancelled;},request:(type,payload)=>type==='output'?new Promise(resolve=>finish=resolve):sent.push(payload),play:()=>{},send:()=>{},onError:()=>{}});
+ const task=api.midi.output('External MIDI').noteOn(60);
+ active=false;finish(9);await assert.rejects(task,error=>error===cancelled);assert.deepEqual(sent,[]);
+});
+
+test('enableSoundChip accepts allocation options through both public entry points',async()=>{
+ const requests=[];
+ const api=createOutputApi({request:async(type,payload)=>requests.push({type,payload}),onError:()=>{}});
+ await api.midi.enableSoundChip('tetorica-ym2612',{roundRobin:false});
+ await api.enableSoundChip('ym2612',{roundRobin:true});
+ assert.deepEqual(requests,[{type:'enable-chip',payload:{chip:'ym2612',roundRobin:false}},{type:'enable-chip',payload:{chip:'ym2612',roundRobin:true}}]);
+ await assert.rejects(api.midi.enableSoundChip('ym2612',{roundRobin:0}),/boolean/);
+ await assert.rejects(api.midi.enableSoundChip('sega-psg',{roundRobin:false}),/YM2612/);
+ assert.equal(requests.length,2);
+});

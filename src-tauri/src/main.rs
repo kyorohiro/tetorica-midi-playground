@@ -351,30 +351,26 @@ fn connect_input(id: String, clock_events: tauri::ipc::Channel<ClockEvent>, stat
 #[tauri::command]
 fn connect_output(id: String, state: tauri::State<AppState>, rack:tauri::State<test_synth::Rack>) -> Result<(), String> {
     let internal=match id.as_str() {
-        "internal:ym2612"=>Some("Tetorica YM2612"),
-        "internal:sega-psg"=>Some("Tetorica Sega PSG"),
+        "internal:ym2612"=>Some((0,"Tetorica YM2612")),
+        "internal:sega-psg"=>Some((1,"Tetorica Sega PSG")),
         _=>None,
     };
-    if internal.is_some(){rack.enable(true)?;}
-    let output = MidiOutput::new("Tetorica Notes").map_err(|e| e.to_string())?;
-    let id=if let Some(name)=internal {
-        let descriptions=output.ports().iter().map(|p|Ok(Port{id:p.id(),name:output.port_name(p).map_err(|e|e.to_string())?})).collect::<Result<Vec<_>,String>>()?;
-        descriptions[resolve_output_port(&descriptions,name,None)?].id.clone()
-    }else{id};
-    let port = output
-        .find_port_by_id(&id)
-        .ok_or("Output disappeared; refresh ports")?;
-    let name = output.port_name(&port).map_err(|e| e.to_string())?;
-    let next = output
-        .connect(&port, "Tetorica Notes")
-        .map_err(|e| e.to_string())?;
+    let (name,next):(String,Box<dyn NoteOutput>)=if let Some((port,name))=internal {
+        rack.enable(true)?;
+        (name.into(),Box::new(rack.output(port)?))
+    } else {
+        let output=MidiOutput::new("Tetorica Notes").map_err(|e|e.to_string())?;
+        let port=output.find_port_by_id(&id).ok_or("Output disappeared; refresh ports")?;
+        let name=output.port_name(&port).map_err(|e|e.to_string())?;
+        (name,Box::new(output.connect(&port,"Tetorica Notes").map_err(|e|e.to_string())?))
+    };
     let mut s = state.session.lock().unwrap();
     s.run_id += 1;
     s.follow = false;
     s.stop()?;
     s.routes.clear(); s.route_ids.clear();
     s.output_id=Some(id);
-    s.output = Some(Box::new(next));
+    s.output = Some(next);
     s.output_name = Some(name);
     Ok(())
 }
@@ -387,28 +383,40 @@ fn resolve_output_port(ports:&[Port],wanted:&str,id:Option<&str>)->Result<usize,
 fn script_output(run_id:u64, name:String, port_id:Option<String>, state:tauri::State<AppState>, rack:tauri::State<test_synth::Rack>)->Result<u64,String> {
     let mut s=state.session.lock().unwrap();
     if s.run_id!=run_id {return Err("Run was stopped".into());}
-    let output=MidiOutput::new("Tetorica Script").map_err(|e|e.to_string())?;
-    let internal=match (port_id.is_none(),name.as_str()) { (true,"tetorica-ym2612")=>Some("Tetorica YM2612"),(true,"tetorica-sega-psg")=>Some("Tetorica Sega PSG"),_=>None };
-    if internal.is_some() && !rack.status().enabled {return Err("Call await enableSoundChip(...) first".into());}
-    let wanted=internal.unwrap_or(&name);
-    let ports=output.ports();
-    let descriptions:Vec<_>=ports.iter().map(|p|Ok(Port{id:p.id(),name:output.port_name(p).map_err(|e|e.to_string())?})).collect::<Result<_,String>>()?;
-    let index=resolve_output_port(&descriptions,wanted,port_id.as_deref())?;
-    let id=ports[index].id();
+    let internal=match (port_id.is_none(),name.as_str()) {
+        (true,"tetorica-ym2612")=>Some((0,"internal:ym2612")),
+        (true,"tetorica-sega-psg")=>Some((1,"internal:sega-psg")),
+        _=>None,
+    };
+    let (id,connection):(String,Box<dyn NoteOutput>)=if let Some((port,id))=internal {
+        let connection=rack.output(port)?;
+        (id.into(),Box::new(connection))
+    } else {
+        let output=MidiOutput::new("Tetorica Script").map_err(|e|e.to_string())?;
+        let ports=output.ports();
+        let descriptions:Vec<_>=ports.iter().map(|p|Ok(Port{id:p.id(),name:output.port_name(p).map_err(|e|e.to_string())?})).collect::<Result<_,String>>()?;
+        let index=resolve_output_port(&descriptions,&name,port_id.as_deref())?;
+        let id=ports[index].id();
+        if s.output_id.as_ref()==Some(&id) {return Ok(0);}
+        if let Some(route)=s.route_ids.get(&id) {return Ok(*route);}
+        (id,Box::new(output.connect(&ports[index],"Tetorica Script").map_err(|e|e.to_string())?))
+    };
     if s.output_id.as_ref()==Some(&id) {return Ok(0);}
     if let Some(route)=s.route_ids.get(&id) {return Ok(*route);}
     if s.routes.len()>=16 {return Err("At most 16 script outputs".into());}
-    let connection=output.connect(&ports[index],"Tetorica Script").map_err(|e|e.to_string())?;
     s.next_route+=1; let route=s.next_route;
-    s.routes.insert(route,Box::new(connection));s.route_ids.insert(id,route);
+    s.routes.insert(route,connection);s.route_ids.insert(id,route);
     Ok(route)
 }
 #[tauri::command]
-fn enable_sound_chip(run_id:u64, chip:String,state:tauri::State<AppState>,rack:tauri::State<test_synth::Rack>)->Result<(),String> {
+fn enable_sound_chip(run_id:u64, chip:String, round_robin:Option<bool>,state:tauri::State<AppState>,rack:tauri::State<test_synth::Rack>)->Result<(),String> {
     if !matches!(chip.as_str(),"ym2612"|"sega-psg") {return Err("Unknown sound chip".into());}
     if state.session.lock().unwrap().run_id!=run_id {return Err("Run was stopped".into());}
+    if chip!="ym2612" && round_robin.is_some() {return Err("Allocation mode is only supported for YM2612".into());}
     rack.enable(true)?;
-    if state.session.lock().unwrap().run_id!=run_id {return Err("Run was stopped".into());}
+    let session=state.session.lock().unwrap();
+    if session.run_id!=run_id {return Err("Run was stopped".into());}
+    if chip=="ym2612" {rack.set_round_robin(round_robin.unwrap_or(true))?;}
     Ok(())
 }
 #[tauri::command]

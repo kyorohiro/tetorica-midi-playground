@@ -12,6 +12,7 @@ struct Event {
     bytes: [u8; 3],
     len: usize,
     patch: Option<(u8,FmPatch)>,
+    round_robin: Option<bool>,
 }
 struct Shared {
     queue: ArrayQueue<Event>,
@@ -40,7 +41,7 @@ impl Default for Shared {
 impl Shared {
     fn enqueue_patch(&self, channel:u8, patch:FmPatch)->Result<(),String> {
         let mut bank=self.bank.lock().unwrap();
-        self.queue.push(Event {port:0,bytes:[0;3],len:0,patch:Some((channel,patch))}).map_err(|_|"FM update queue full; retry")?;
+        self.queue.push(Event {port:0,bytes:[0;3],len:0,round_robin:None,patch:Some((channel,patch))}).map_err(|_|"FM update queue full; retry")?;
         if channel==0 {*bank=[patch;16];}else{bank[(channel-1) as usize]=patch;}
         Ok(())
     }
@@ -62,7 +63,7 @@ impl Shared {
                 .push(Event {
                     port,
                     bytes: [bytes[0], bytes[1], *bytes.get(2).unwrap_or(&0)],
-                    len:bytes.len(),patch:None,
+                    len:bytes.len(),round_robin:None,patch:None,
                 })
                 .is_err()
             {
@@ -87,7 +88,7 @@ impl Shared {
                 let Some(e) = self.queue.pop() else {
                     break;
                 };
-                if e.patch.is_some(){Self::apply_patch(e,mixer);}
+                if e.patch.is_some() || e.round_robin.is_some(){Self::apply_patch(e,mixer);}
                 else if e.port == 2 {
                     for synth in &mut mixer.synths {
                         synth.panic();
@@ -99,12 +100,27 @@ impl Shared {
         }
     }
     fn apply_patch(event:Event,mixer:&mut Mixer){
+        if let Some(enabled)=event.round_robin {
+            if let Instrument::Ym2612(s)=&mut mixer.synths[0] {s.set_round_robin(enabled);}
+        }
         if let Some((channel,patch))=event.patch {if let Instrument::Ym2612(s)=&mut mixer.synths[0] {
             if channel==0 {for ch in 1..=16 {let _=s.set_patch(ch,patch);}}
             else {let _=s.set_patch(channel,patch);}
         }}
     }
 
+}
+// Internal routes target this rack, never an OS port selected by display name.
+pub struct InternalOutput {
+    shared: std::sync::Weak<Shared>,
+    port: usize,
+}
+impl crate::NoteOutput for InternalOutput {
+    fn send(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let shared=self.shared.upgrade().ok_or("Internal sound chip was disabled; reconnect")?;
+        shared.receive(self.port, bytes);
+        Ok(())
+    }
 }
 struct Running {
     shared: Arc<Shared>,
@@ -128,6 +144,19 @@ pub struct Status {
     error: bool,
 }
 impl Rack {
+    pub fn output(&self, port:usize)->Result<InternalOutput,String> {
+        if port>1 {return Err("Unknown internal sound chip".into());}
+        let guard=self.0.lock().unwrap();
+        let running=guard.as_ref().ok_or("Call await enableSoundChip(...) first")?;
+        Ok(InternalOutput {shared:Arc::downgrade(&running.shared),port})
+    }
+
+    pub fn set_round_robin(&self, enabled:bool)->Result<(),String> {
+        let guard=self.0.lock().unwrap();
+        let running=guard.as_ref().ok_or("Enable sound chip first")?;
+        running.shared.queue.push(Event {port:0,bytes:[0;3],len:0,patch:None,round_robin:Some(enabled)})
+            .map_err(|_|"Sound queue full; retry".into())
+    }
     pub fn patches(&self) -> [FmPatch; 16] {
         *self.1.lock().unwrap()
     }
@@ -149,7 +178,7 @@ impl Rack {
                 .push(Event {
                     port: 2,
                     bytes: [0; 3],
-                    len:0,patch:None,
+                    len:0,round_robin:None,patch:None,
                 })
                 .is_err()
             {
@@ -208,7 +237,7 @@ impl Rack {
         {
             let shared = Arc::new(Shared {bank:self.1.clone(),..Shared::default()});
             for (i, patch) in self.1.lock().unwrap().iter().enumerate() {
-                let _ = shared.queue.push(Event {port:0,bytes:[0;3],len:0,patch:Some((i as u8 + 1,*patch))});
+                let _ = shared.queue.push(Event {port:0,bytes:[0;3],len:0,round_robin:None,patch:Some((i as u8 + 1,*patch))});
             }
             let audio_shared = shared.clone();
             let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
@@ -339,6 +368,31 @@ pub fn synth_panic(state: tauri::State<Rack>) {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn internal_output_is_local_and_expires_with_rack() {
+        use crate::NoteOutput;
+        let own=std::sync::Arc::new(super::Shared::default());
+        let other=std::sync::Arc::new(super::Shared::default());
+        let mut output=super::InternalOutput {shared:std::sync::Arc::downgrade(&own),port:1};
+        output.send(&[0x90,60,100]).unwrap();
+        let event=own.queue.pop().unwrap();
+        assert_eq!(event.port,1);
+        assert_eq!(event.bytes,[0x90,60,100]);
+        assert!(other.queue.pop().is_none());
+        drop(own);
+        assert!(output.send(&[0x80,60,0]).is_err());
+    }
+
+    #[test]
+    fn allocation_configuration_is_ordered_with_midi() {
+        let shared=Shared::default();let mut mixer=Mixer::new(48000).unwrap();
+        shared.receive(0,&[0x90,60,100]);
+        shared.queue.push(Event {port:0,bytes:[0;3],len:0,patch:None,round_robin:Some(false)}).ok().unwrap();
+        shared.receive(0,&[0x9f,60,100]);
+        shared.apply(&mut mixer);assert_eq!(mixer.synths[0].active(),0);
+        shared.receive(0,&[0x95,60,100]);shared.apply(&mut mixer);assert_eq!(mixer.synths[0].active(),1<<5);
+    }
+
     use super::*;
     #[test]
     fn sysex_and_notes_keep_order_in_one_audio_block_and_share_bank() {
@@ -421,7 +475,7 @@ mod tests {
             .push(Event {
                 port: 2,
                 bytes: [0; 3],
-                    len:0,patch:None,
+                    len:0,round_robin:None,patch:None,
             })
             .ok()
             .unwrap();
