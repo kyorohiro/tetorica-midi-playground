@@ -11,16 +11,26 @@ MIDI Clock/Start/Continue/Stop, displays tick position and estimated BPM, and
 sends MIDI note 60 on channel 1 for 250 ms. The optional test pattern emits that
 note at each received 24-clock boundary (first note after 24 ticks).
 
-The FM2612-style interface now includes Code / Console / MIDI / Helper tabs,
-Run / Stop, a local file list, JS import/export and an expandable Monaco editor with MIDI helper completion.
+The FM2612-style interface always fills the window, with FILES on the left.
+The upper tabs are Code / YM2612 / Sega PSG / MIDI / Mixer; the independently
+selected lower tabs are Console / Shell / Keyboard / Helper. **Panel** and **×**
+show or hide the lower panel. Drag either divider to resize FILES or the lower
+panel; sizes are remembered, and double-clicking a divider resets it.
+Run / Stop, JS import/export and Monaco editing with MIDI helper completion are included.
 The tab controller and file tree are snapshots of the original Playground modules
 under `ui/shared`; the original Browser application is unchanged. Monaco is not
 loaded from a CDN: it is bundled locally, with a textarea fallback. The editor
 checks JavaScript types and syntax, isolates each FILES script's scope, and
 provides MIDI API/JSDoc completion, hover and argument hints across relative imports.
-FILES supports folders, rename/move/copy/delete, binary voice import and project cassettes.
+FILES supports folders, binary voice import and project cassettes. Right-click
+a file or folder for Copy Relative Path / Copy / Paste / Delete / Cut / Rename /
+New File / New Folder. Rename changes the name within its folder; Cut / Paste
+or dragging moves it. Copy keeps a snapshot of text and binary files and chooses
+an unused name when pasting into a folder with the same name.
 Menu → Git provides local staging, diffs, commits, history and branch creation;
-Git history travels with the cassette. Remote operations are a later step.
+Git history travels with the cassette. The virtual FILES Shell shares this repository;
+HTTPS remotes (including GitHub) use native approval and OS-stored PATs.
+Fetch, current-branch fast-forward pull and push are supported; clone, checkout and merge are not.
 `livePrepare()` caches inferred initialization results across Apply; `tween()`
 animates MIDI controls over seconds or beats with loop cancellation.
 Links in API completion details and hover open read-only type declarations and
@@ -180,7 +190,7 @@ rejection. Test the new UI manually with GarageBand using `examples/melody.js`, 
 Stop, rerun, and output disconnect. Cmd/Ctrl+Enter runs; Shift+Escape stops.
 
 Release packaging and itch.io page draft: [RELEASE.md](RELEASE.md).
-The in-app FILES README is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.
+The in-app guides live under `/sys/` so project README files can be tracked in Git. Their source is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.
 
 ### MIDI Clock test sender (macOS)
 
@@ -198,3 +208,14 @@ Raw `send()` notes require explicit cleanup.
 See [the API guide](ui/README.md#low-level-midi-api) or
 [日本語ガイド](ui/README_jp.md#低レベルmidi-api) for validation, lifecycle and receiver support.
 The bend and CC examples in FILES can be tested with the internal YM2612 or Sega PSG selected in MIDI settings, or a compatible external instrument. Internal Program Change mapping is pending.
+
+
+## Shell and GitHub
+
+Open **Shell** for project commands (`help`, `pwd`, `ls`, `cd`, `cat`, `mkdir`, `cp`, `mv`, `rm`, `find`, `rg`, `read`, `edit`, `patch`), pipes and redirection. Commands operate on virtual FILES; they do not invoke the host shell or evaluate arbitrary JavaScript. Editor changes are synchronized before commands. File mutations stop playback; read-only commands do not.
+
+**Menu → Git…** manages local history, HTTPS remote URL/branch and named PAT metadata. Register the actual PAT in the native dialog; macOS Keychain stores the secret. It is never sent to JavaScript or included in a cassette. The credential service is separate from FM2612 Playground. Native approval identifies the remote and, for push, the branch and commit.
+
+Start with an **empty** GitHub repository, commit locally, set its HTTPS `.git` URL, then push. Later fetch or fast-forward pull on the current branch. Importing an unrelated existing repository through clone is not supported; a cassette carrying its existing Git history can be restored. Public reads can proceed anonymously after native confirmation when no token matches the host. See the in-app [English](ui/README.md#github-and-https-remotes) / [Japanese](ui/README_jp.md#githubとhttps-remote) guide for commands.
+
+Native Git dependency notices are shipped in [ui/vendor/native-git](ui/vendor/native-git/README.md); the shared JavaScript Git engine notices remain in [ui/vendor/virtual-git](ui/vendor/virtual-git/README.md).

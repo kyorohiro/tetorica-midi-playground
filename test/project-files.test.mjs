@@ -28,10 +28,13 @@ test('failed FILES operations publish nothing and protect guides, metadata, and 
     () => store.transfer('/parts/lead.js', '/taken.js'),
     () => store.transfer('/parts', '/INDEX.js'),
     () => store.createFile('/INDEX.js'),
-    () => store.createFile('/lib/README.md'),
-    () => store.createFile('/README.md/child.js'),
-    () => store.mkdir('/LIB'),
+    () => store.createFile('/sys/lib/README.md'),
+    () => store.createFile('/sys/unknown.js'),
+    () => store.mkdir('/SYS'),
+    () => store.remove('/sys'),
+    () => store.transfer('/parts', '/sys/parts'),
     () => store.createFile('/metadata.json'),
+    () => store.createFile('/metadata.json/child.js'),
     () => store.write('/.git/HEAD', 'changed'),
     () => store.transfer('/.git', '/repo'),
     () => store.remove('/.git'),
@@ -72,10 +75,12 @@ test('sync preserves unchanged revisions while New or Import invalidates a same-
 });
 
 test('snapshots preserve Git bytes and isolate binary edits; generated guides stay outside the store', () => {
-  const source = {'/index.js': 'entry', '/README.md': 'generated', '/.git/objects/ab/12': binaryFile([0, 255, 254, 128])};
+  const source = {'/index.js': 'entry', '/sys/README.md': 'generated', '/README.md': 'project documentation', '/lib/README.md':'project library documentation', '/.git/objects/ab/12': binaryFile([0, 255, 254, 128])};
   const store = createProjectFiles({files: source, directories: ['/empty/nested']});
   const snapshot = store.snapshot();
-  assert.equal(snapshot.files['/README.md'], undefined);
+  assert.equal(snapshot.files['/sys/README.md'], undefined);
+  assert.equal(snapshot.files['/README.md'], 'project documentation');
+  assert.equal(snapshot.files['/lib/README.md'], 'project library documentation');
   assert.deepEqual(snapshot.files['/.git/objects/ab/12'], source['/.git/objects/ab/12']);
   source['/.git/objects/ab/12'].bytes[0] = 9;
   snapshot.files['/.git/objects/ab/12'].bytes[0] = 8;
@@ -84,7 +89,8 @@ test('snapshots preserve Git bytes and isolate binary edits; generated guides st
   store.createFile('/new/deep/note.js', 'play(60)');
   assert.equal(store.fs.get('/new/deep/note.js').data, 'play(60)');
   assert.ok(store.listDirectories().includes('/empty/nested'));
-  assert.throws(() => createProjectFiles({files: {'/lib': 'blocks the guide'}}), /guide/);
+  assert.doesNotThrow(() => createProjectFiles({files: {'/lib': 'ordinary project file'}}));
+  assert.throws(() => createProjectFiles({files: {'/sys': 'blocks the guide namespace'}}), /guide/);
 });
 
 test('project limits and file-directory collisions are checked before replacing the current project', () => {
@@ -93,7 +99,9 @@ test('project limits and file-directory collisions are checked before replacing 
   assert.throws(() => store.replace(Object.fromEntries(Array.from({length: 1024}, (_, i) => [`/${i}.txt`, '']))), /1024/);
   assert.throws(() => store.replace({'/index.js': 'entry', '/a': 'file', '/a/b.js': 'child'}), /File blocks/);
   assert.doesNotThrow(() => store.validateReplacement([{path: '/index.js', data: 'entry'}, {path: '/.git/refs/heads/voice.js', data: new Uint8Array([0, 255])}], ['/', '/.git/refs/heads']));
-  assert.throws(() => store.validateReplacement([{path: '/README.md', data: 'overwrite'}]), /protected/);
+  assert.doesNotThrow(() => store.validateReplacement([{path: '/index.js', data: 'entry'}, {path: '/README.md', data: 'GitHub project README'}, {path: '/lib/README.md', data: 'GitHub library README'}]));
+  for(const path of ['/sys','/sys/README.md','/sys/payload.js','/SYS/payload']) assert.throws(() => store.validateReplacement([{path, data: 'overwrite'}]), /protected/);
+  for(const path of ['/sys','/sys/nested','/SYS']) assert.throws(() => store.validateReplacement([{path:'/index.js',data:'entry'}], [path]), /Protected/);
   assert.throws(() => store.validateReplacement([{path: '/index.js', data: 'entry'}, {path: '/index.js', data: 'again'}]), /duplicate/);
   assert.throws(() => store.validateReplacement([{path: '/index.js', data: new Uint8Array([0])}]), /JavaScript/);
   assert.deepEqual(store.snapshot(), before);

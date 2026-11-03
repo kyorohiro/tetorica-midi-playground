@@ -1,6 +1,6 @@
 # Tetorica MIDI Playground — Getting started
 
-日本語の手順は FILES の README_jp.md を開いてください。
+日本語の手順は FILES の /sys/README_jp.md を開いてください。
 
 Play GarageBand instruments with JavaScript.
 Tetorica sends MIDI performance messages; GarageBand produces the audio.
@@ -12,6 +12,12 @@ Tetorica sends MIDI performance messages; GarageBand produces the audio.
 - The Tetorica MIDI Playground app
 
 The packaged app does not require Node.js or Rust.
+
+## Workspace
+
+The app always fills the window, with **Menu** in the top toolbar and **FILES** on the left. The upper tabs are **Code / YM2612 / Sega PSG / MIDI / Mixer**. The lower tabs are **Console / Shell / Keyboard / Helper**; they stay open independently of the upper selection, so you can edit code while reading Console or using Shell. Opening a file returns to Code and keeps the lower selection.
+
+Use **Panel** to show or hide the lower panel, or **×** to close it. Reopening it restores the previous lower selection. Drag the vertical divider to adjust FILES width, or the horizontal divider to adjust the lower panel height. Sizes are remembered across restarts; double-click either divider to reset its size. Focus a divider and use arrow keys for smaller adjustments, Shift+arrow for larger steps, or Home/End for the minimum/maximum. Tab-row navigation with arrow keys and Home/End stays within that row.
 
 ## 1. Prepare GarageBand
 
@@ -200,7 +206,7 @@ External `play` now schedules native Note Off by Clock pulse count: durations ar
 
 Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel CH1–CH16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
 
-Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input beside the Code panel tabs is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
+Hiding Keyboard, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Changing an upper tab while Keyboard remains visible keeps it available for audition. Keyboard input beside the Code panel tabs is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
 
 ## Built-in YM2612 audition (macOS trial)
 
@@ -288,7 +294,7 @@ The last two examples deliberately demonstrate external setup. Port names are no
 
 ## Reusable libraries
 
-Open `lib/README.md` in FILES for the module guide, or run `examples/09_library.js` to try it without a DAW. `lib/phrase.js` exports `playPhrase(context, output, notes, options)` with JSDoc completion. The example uses `await import("../lib/phrase.js")` and passes its liveLoop context explicitly so cancellation follows the loop. Imported modules do not inherit the Run file's local helpers. Library code is editable and saved edits are preserved.
+Open `/sys/lib/README.md` in FILES for the module guide, or run `examples/09_library.js` to try it without a DAW. `lib/phrase.js` exports `playPhrase(context, output, notes, options)` with JSDoc completion. The example uses `await import("../lib/phrase.js")` and passes its liveLoop context explicitly so cancellation follows the loop. Imported modules do not inherit the Run file's local helpers. Library code is editable and saved edits are preserved.
 
 Use `pg.` to browse the MIDI API, for example `pg.midi.output(...)`, `pg.play(...)`, and `pg.liveLoop(...)`. `context` and `pg.context` refer to the same user-defined state object: Apply preserves it and Run resets it. Inside an explicit `liveLoop` callback, its parameter (often named `context`) is the loop helper API, not the shared state; use `context.pg` for scoped API calls and `context.context` for shared state. Parameterless inline callbacks automatically scope `pg` to their loop.
 
@@ -368,11 +374,13 @@ Use `await midi.enableSoundChip("tetorica-ym2612", {roundRobin: false})` before 
 
 ## Organize FILES and local Git
 
-Use **FILES → + / Folder+** to create files and folders. The **⋯** button acts on the open file; right-click a file or folder for rename/move, copy, delete, or **Copy relative path**. Enter a project path such as `/parts/bass.js`. Drag a file or folder onto a directory to move it; hold Ctrl or Option to copy. Import accepts multiple JS, text/JSON, or TFI/VGI files into the current directory. Existing paths are not overwritten. Structural changes stop playback.
+Right-click a file or folder in **FILES** to open its nearby menu: **Copy Relative Path / Copy / Paste / Delete / Cut / Rename… / New File… / New Folder…**. The **⋯** button opens the same menu for the viewed file. **+ / Folder+** also create files and folders. New items accept a project path such as `/parts/bass.js`; **Rename…** changes only the item's name within its current folder. To move an item, use **Cut**, open the destination folder's menu, and **Paste**, or drag it onto the folder. Hold Ctrl or Option while dragging to copy.
+
+**Copy** captures the current text and binary contents of a file or folder. Paste uses that snapshot even if you subsequently edit the source; conflicting names become `bass-copy.js`, `bass-copy-2.js`, and so on. **Cut / Paste** moves the current source and rejects an existing destination. **Copy Relative Path** copies the path relative to the project root. Import accepts multiple JS, text/JSON, or TFI/VGI files into the current directory and does not overwrite existing paths. Structural changes stop playback.
 
 Run file and the viewed file follow moves. Unchanged files retain editor Undo; moved files retain cursor/view position but receive a new model and Undo history. Relative import and `loadVoice()` strings in source are not rewritten when files move. Bundled guides and `.git` are protected. At least one runnable JavaScript file must remain. Deleting or moving bundled examples persists across restarts.
 
-**Menu → Git…** opens local history for this project: initialize a repository, inspect status/diffs, stage individual files or all changes, enter an author and commit message, commit, and view history or create a branch at the current commit. Branch creation does not switch branches. Remote operations and branch switching are not available yet. This repository lives inside virtual FILES; it does not operate on your Mac's Git checkout.
+**Menu → Git…** opens local history for this project: initialize a repository, inspect status/diffs, stage individual files or all changes, enter an author and commit message, commit, and view history or create a branch at the current commit. Branch creation does not switch branches. HTTPS remote operations are described below; branch switching is not available. This repository lives inside virtual FILES; it does not operate on your Mac's Git checkout.
 
 Git history, binary voices, and empty folders are included in autosave and project cassette export/import. `.git` is hidden in FILES and is not sent to performance scripts. Git validates the filesystem's 16 MiB / 1024-file budget before publishing. Export also checks manifest size and ZIP overhead against the cassette limits. Git metadata is not a backup outside the app: export your cassette to keep a separate copy. New Project replaces the current history along with its files. Git operations never execute imported code.
 
@@ -406,3 +414,44 @@ liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
 `tween({seconds: 1}, callback)` measures elapsed time; `{beats: 4}` follows internal BPM changes or actual external MIDI Clock pulses. Numeric duration means seconds. Positive durations call back with 0, increasing progress, and exactly 1; zero calls only 1. Async callbacks are awaited in order. This is timer-driven MIDI control, not audio-rate automation. `lerp()` maps progress to the desired value.
 
 Use loop-local `tween` / `ctx.tween` / `ctx.pg.tween` to cancel on `stopLoop()` or same-name Apply replacement, without forcing a final value. An already started async callback must finish before cancellation is checked again. Stop ends the whole Worker. See `examples/17_tween.js`; `stopLoop("…")` completes literal loop names from `liveLoop()` / `pg.liveLoop()` calls in the editing file.
+
+
+## Shell
+
+The **Shell** tab shares FILES and Git with the editor. Enter one command at a time; use ↑/↓ for command history, **Stop command** to cancel a pending command, and **Clear** to clear output.
+
+```text
+pwd
+ls
+mkdir parts
+echo "export const notes = ['C4', 'E4', 'G4'];" > parts/notes.js
+cat parts/notes.js | rg -F C4 -
+mv parts/notes.js parts/phrase.js
+```
+
+Use `help` or `help COMMAND` for supported syntax. Navigation, reads, searches and `echo` without redirection do not stop playback. File mutations stop it and update the editor, selected file and Run file. A failed command/pipeline does not publish partial file changes. Concurrent edits, New Project, Import and cancellation prevent stale data from being written back. Pipes and `<`, `>`, `>>` are supported; Git must run separately from pipelines/redirection.
+
+This is a virtual project shell. It does not run OS commands, install packages or evaluate JavaScript; command chaining/expansion and `git clone`, checkout or merge are not supported. Shell snapshot/undo/diff are not exposed; use Git for saved history. Generated guides live under protected `/sys/` and are excluded from project snapshots. Root `README.md` and `lib/README.md` are ordinary editable project files. `.git` is hidden and managed only by Git commands.
+
+## GitHub and HTTPS remotes
+
+Create an **empty GitHub repository** first (without an initial README/commit). Open **Menu → Git…**, give a token a name and host (`https://github.com`), and press **Add token…**. Enter a PAT with access to the intended repository in the native dialog. Secrets are stored in the OS credential store, separately from the FM2612 app, and are excluded from JavaScript, FILES, logs and cassettes. The select/delete buttons manage named tokens; the previous selection is offered by native connection dialogs.
+
+Then use the Git panel or Shell:
+
+```text
+cd /
+git init
+git config user.name "Your Name"
+git config user.email "you@example.com"
+git add .
+git commit -m "First sketch"
+git remote add origin https://github.com/OWNER/REPOSITORY.git
+git push -u origin main
+```
+
+Replace the URL and author fields with your own. Push opens a native confirmation showing the repository, branch and exact commit. Nothing is sent until approved there. Future `git fetch` updates remote history; `git pull` updates the current branch only when the working tree is clean and history can fast-forward. Commit local edits first. Diverged history is rejected; merging and branch checkout are not implemented. HTTPS URLs may not embed credentials.
+
+The default project contains starter files, so this is not an arbitrary existing-repository import/clone flow. To resume an existing project, import its MIDI cassette including Git history; a pull can then advance that same history. A pulled project must retain at least one runnable JS file and fit FILES limits. UTF-8 code/README files become editable text, retaining a BOM when present; TFI/VGI and Git objects remain binary. Viewing an unedited BOM file does not dirty Git status.
+
+When no saved token matches a host, public fetch/pull may use an anonymous native-approved connection. Private repositories and push need the appropriate token. Credentials stay app-wide; remote URL and repository history travel with the cassette. Use Export project for an app-independent backup. Actual DAW/device timing and live GitHub credentials are separate manual checks; automated tests use isolated transports.

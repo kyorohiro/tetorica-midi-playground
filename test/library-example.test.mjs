@@ -38,7 +38,8 @@ test('library guide is non-executable and updating bundles preserves edited modu
  const saved={'/lib/phrase.js':'// my custom helper','/examples/09_library.js':'// my example'};
  const files=withGuide(mergeExamples(saved,bundledExamples));
  for(const path of Object.keys(saved))assert.equal(files[path],saved[path]);
- assert.equal(isGuide('/lib/README.md'),true);
- assert.equal(canRun('/lib/README.md'),false);
+ assert.equal(isGuide('/sys/lib/README.md'),true);
+ assert.equal(canRun('/sys/lib/README.md'),false);
+ assert.equal(isGuide('/lib/README.md'),false);
  assert.equal(isGuide('/lib/phrase.js'),false);
 });

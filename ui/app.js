@@ -14,17 +14,25 @@ import {installPerformanceShortcuts} from './performance-shortcuts.js';
 import {connectionStatus,midiOutputChoices} from './connection.js';
 import {leadExample} from './examples.js';
 import {ensureEntry,runSource,createNewProject,projectFileName} from './project.js';
-import {withGuide,canRun,isGuide} from './guide.js';
+import {withGuide,canRun,isGuide,resolveGuideSelection} from './guide.js';
 import {createProjectFiles,isInternalProjectPath} from './project-files.js';
 import {mountProjectExplorer} from './project-explorer.js';
 import {mountProjectGit} from './project-git.js';
+import {createNativeGit} from './native-git.js';
+import {mountProjectShell} from './project-shell.js';
 import {createPlaygroundUi} from './shared/playground_ui.js';
+import {installWorkbenchResize} from './workbench-resize.js';
 const invoke=window.__TAURI__.core.invoke;
 const $=id=>document.getElementById(id);
 let auditionKeyboard=null;
-const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>{auditionKeyboard?.setView(tab);$('keyboardInput').hidden=tab!=='code';}});
+const ui=createPlaygroundUi({dockedPanels:true,primaryTabs:['code','synthA','synthB','operator','mixer'],
+  dock:$('workbenchDock'),dockDivider:$('bottomPanelDivider'),dockToggle:$('dockToggle'),dockClose:$('dockClose'),initialBottomTab:'console',initialDockOpen:true,
+  extraTabs:["shell","synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),
+  ...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),
+  onBottomTabChange:(tab,state)=>{const view=state?.dockOpen&&state.bottomTab==='keyboard'?'keyboard':state?.primaryTab??tab;auditionKeyboard?.setView(view);$('keyboardInput').hidden=(state?.primaryTab??tab)!=='code'||view==='keyboard';}});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
+installWorkbenchResize({workbench:$('workbench'),fileExplorer:$('fileExplorer'),fileDivider:$('fileExplorerDivider'),dock:$('workbenchDock'),dockDivider:$('bottomPanelDivider')});
 const projectStorageKey='midi-project-v1';
 let savedProject=null,recoveryRaw=null,saveBlocked=false;
 try{recoveryRaw=localStorage.getItem('midi-project-recovery');savedProject=JSON.parse(localStorage.getItem(projectStorageKey));}catch{}
@@ -56,20 +64,21 @@ function refreshRunFiles(){
   $('runFile').value=runPath;
 }
 refreshRunFiles();
-$('runFile').onchange=()=>{runPath=$('runFile').value;openFile(runPath);};
+$('runFile').onchange=()=>{runPath=$('runFile').value;ui.setBottomTab('code');openFile(runPath);};
 $('bpm').addEventListener('change',()=>persist());
 $('clockMode').addEventListener('change',()=>persist());
 let codeEditor=null;
 const pendingEdits=new Map();
-let selected=Object.hasOwn(files,savedProject?.selected)&&!isInternalProjectPath(savedProject.selected)?savedProject.selected:'/README.md';
-let explorer=null,gitPanel=null;
+const savedSelection=resolveGuideSelection(savedProject?.selected,projectStore.snapshot().files);
+let selected=Object.hasOwn(files,savedSelection)&&!isInternalProjectPath(savedSelection)?savedSelection:'/sys/README.md';
+let explorer=null,gitPanel=null,shellPanel=null;
 function projectSnapshot(){return {...projectStore.snapshot(),runPath,selected,bpm:Number($('bpm').value),clockMode:$('clockMode').value,exactFiles:exactProjectFiles,name:projectName};}
 function persist(){if(saveBlocked)return;try{localStorage.setItem(projectStorageKey,JSON.stringify(projectSnapshot()));}catch{ui.setStatus('Local save failed. Use Export project to save your code.');}}
 function openFile(path){if(!Object.hasOwn(files,path)||isInternalProjectPath(path))return;selected=path;codeEditor?.open(path,filePreview(files[path]),isGuide(path)||isBinaryFile(files[path]));$('editor').value=filePreview(files[path]);$('editor').readOnly=isGuide(path)||isBinaryFile(files[path]);refreshRunFiles();explorer?.render();persist();}
 function updateFile(path,text){pendingEdits.set(path,text);try{projectStore.write(path,text);files[path]=text;pendingEdits.delete(path);persist();}catch(error){ui.logLine(String(error));ui.setStatus('Edit could not be saved: '+String(error));}}
 function flushEditor(){
   if(!isGuide(selected)&&!isBinaryFile(files[selected])){
-    const text=codeEditor?codeEditor.editor.getValue():$('editor').value;
+    const text=codeEditor?codeEditor.editor.getValue({preserveBOM:true}):$('editor').value;
     if(typeof files[selected]==='string'&&text!==files[selected])pendingEdits.set(selected,text);
   }
   // A rejected save in another FILES model must also block Git reconciliation.
@@ -78,16 +87,25 @@ function flushEditor(){
 }
 function publishProjectFiles(detail={}){
   files=withGuide(projectStore.snapshot().files);
-  if(detail.from&&!detail.copy){const remap=path=>path===detail.from||path.startsWith(detail.from+'/')?detail.to+path.slice(detail.from.length):path;runPath=remap(runPath);selected=remap(selected);}
+  const transfers=detail.transfers??(detail.from&&!detail.copy?[detail]:[]);
+  for(const transfer of transfers){const remap=path=>path===transfer.from||path.startsWith(transfer.from+'/')?transfer.to+path.slice(transfer.from.length):path;runPath=remap(runPath);selected=remap(selected);}
   if(!canRun(runPath)||!Object.hasOwn(files,runPath)||isInternalProjectPath(runPath))runPath=Object.keys(files).find(path=>canRun(path)&&!isInternalProjectPath(path))??'';
-  if(!Object.hasOwn(files,selected)||isInternalProjectPath(selected))selected='/README.md';
-  codeEditor?.reconcileFiles(files,detail.from&&!detail.copy?detail:null);
+  if(!Object.hasOwn(files,selected)||isInternalProjectPath(selected))selected='/sys/README.md';
+  codeEditor?.reconcileFiles(files,transfers);
+  if(detail.open)ui.setBottomTab('code');
   openFile(detail.open??selected);refreshRunFiles();explorer?.render();persist();
 }
 const projectError=error=>{ui.logLine(String(error));ui.setStatus(String(error.message??error));};
-explorer=mountProjectExplorer({root:$('fileExplorerList'),newFileButton:$('newFile'),newFolderButton:$('newFolder'),actionsButton:$('fileActions'),importButton:$('importFile'),input:$('fileInput'),getStore:()=>projectStore,getFiles:()=>files,getSelected:()=>selected,onOpen:openFile,beforeChange:async()=>{flushEditor();await stop();},onChanged:detail=>{exactProjectFiles=true;publishProjectFiles(detail);},onError:projectError,onStatus:text=>ui.setStatus(text)});
+explorer=mountProjectExplorer({root:$('fileExplorerList'),newFileButton:$('newFile'),newFolderButton:$('newFolder'),actionsButton:$('fileActions'),importButton:$('importFile'),input:$('fileInput'),getStore:()=>projectStore,getFiles:()=>files,getSelected:()=>selected,onOpen:path=>{ui.setBottomTab('code');openFile(path);},beforeChange:async()=>{flushEditor();await stop();},onChanged:detail=>{exactProjectFiles=true;publishProjectFiles(detail);},onError:projectError,onStatus:text=>ui.setStatus(text)});
 $('gitSettings').addEventListener('click',()=>{$('mainMenu').open=false;});
-gitPanel=mountProjectGit({button:$('gitSettings'),getStore:()=>projectStore,beforeCommand:flushEditor,onChanged:()=>publishProjectFiles(),onError:projectError,onStatus:text=>ui.setStatus(text)});
+const nativeGit=createNativeGit({invoke});
+gitPanel=mountProjectGit({button:$('gitSettings'),getStore:()=>projectStore,...nativeGit,
+  beforeCommand:async action=>{flushEditor();if(action==='pull')await stop();},
+  validateReplacement(entries,dirs,action){if(action==='pull'&&!entries.some(file=>canRun(file.path)&&!isInternalProjectPath(file.path)&&typeof file.data==='string'))throw Error('The remote project must contain at least one JavaScript file. Previous files kept.');},
+  onChanged:()=>{exactProjectFiles=true;publishProjectFiles();},onError:projectError,onStatus:text=>ui.setStatus(text)});
+shellPanel=mountProjectShell({root:$('shellPanel'),getStore:()=>projectStore,beforeCommand:flushEditor,beforeMutation:()=>stop(),
+  onChanged:(_,detail)=>{exactProjectFiles=true;publishProjectFiles(detail);},git:()=>gitPanel,onError:projectError});
+$('shellTab').addEventListener('click',()=>shellPanel.focus());
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;updateFile(selected,$('editor').value);};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
@@ -116,7 +134,7 @@ $('projectExportForm').onsubmit=event=>{
     $('projectExportDialog').close();
   }catch(error){$('projectExportError').textContent=String(error.message??error);}
 };
-// Match the original Playground's dropdown; keep it accessible in expanded mode too.
+// Match the original Playground's dropdown in the top toolbar.
 document.addEventListener('click',event=>{if(!$('mainMenu').contains(event.target))$('mainMenu').open=false;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('mainMenu').open){$('mainMenu').open=false;$('mainMenu').querySelector('summary').focus();}});
 async function replaceProject(project,name){
@@ -125,11 +143,11 @@ async function replaceProject(project,name){
   const nextStore=createProjectFiles({files:restoredFiles,directories:project.directories??[]});
   localStorage.setItem(projectStorageKey,JSON.stringify({...project,files:restoredFiles,exactFiles:true,name}));
   saveBlocked=false;
-  gitPanel?.invalidate();projectStore=nextStore;pendingEdits.clear();
+  gitPanel?.invalidate();shellPanel?.invalidate();projectStore=nextStore;pendingEdits.clear();
   projectName=name;exactProjectFiles=true;files=withGuide(restoredFiles);runPath=project.runPath;
   $('bpm').value=project.bpm;$('clockMode').value=project.clockMode;
   explorer?.reset();codeEditor?.replaceFiles(files);
-  openFile(project.selected);ui.clearConsole();ui.setBottomTab('code');
+  openFile(resolveGuideSelection(project.selected,restoredFiles));ui.clearConsole();ui.setBottomTab('code');
 }
 $('newProject').onclick=()=>{$('mainMenu').open=false;$('newProjectError').textContent='';$('newProjectDialog').showModal();};
 $('cancelNewProject').onclick=()=>$('newProjectDialog').close();
@@ -169,8 +187,7 @@ $('confirmProjectImport').onclick=()=>run(async()=>{
   } catch(error){$('projectImportError').textContent=String(error.message??error);}
   finally {$('confirmProjectImport').disabled=false;$('cancelProjectImport').disabled=false;}
 });
-$('expandButton').onclick=()=>{const expanded=document.body.classList.toggle('expanded');$('mainMenu').open=false;if(expanded)$('runButton').before($('mainMenu'));else $('mainMenuHome').before($('mainMenu'));$('expandButton').setAttribute('aria-pressed',String(expanded));$('expandButton').textContent=expanded?'Collapse':'Expand';};
-$('midiSettings').onclick=()=>ui.setBottomTab('operator');
+$('midiSettings').onclick=()=>{$('mainMenu').open=false;ui.setBottomTab('operator');};
 $('midiConnection').onclick=()=>ui.setBottomTab('operator');
 function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;$('scriptOutputStatus').textContent=`Script outputs: ${snapshot?.script_output_count??0} additional connection(s)`;}
 $('clearConsole').onclick=()=>ui.clearConsole();
@@ -295,7 +312,7 @@ loadMonaco().then(monaco=>{
     codeEditor.open(selected,filePreview(files[selected]),isGuide(selected)||isBinaryFile(files[selected]));
     try {
       definitions=createDefinitionViewer(monaco,codeEditor.editor,{
-        openProjectFile:openFile,isProjectFile:path=>Object.hasOwn(files,path),
+        openProjectFile:path=>{ui.setBottomTab('code');openFile(path);},isProjectFile:path=>Object.hasOwn(files,path),
       });
       links=registerDefinitionLinks(monaco,definitions);
     } catch(error) {links?.dispose();definitions?.dispose();links=null;definitions=null;ui.logLine('Definition viewer unavailable: '+String(error));}

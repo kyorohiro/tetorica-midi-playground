@@ -88,3 +88,6 @@ FILES整理と共有ファイル管理を先に整え、ローカルGit、演奏
 検証：JavaScript全171件成功。実際のMonacoと演奏Workerを使用したChromium／WebKitで、⌘とCtrlのEnter実行前後にコード本文・モデルversionが不変、Runは1回のみ、キーリピートを抑制、通常Enterは改行、ダイアログ中はRunしないことを確認。Keyboard inputの押下・解放・blur時release、Code以外での非表示、Monaco読込失敗時のtextareaでも改行なしでRunすることを確認。両エンジンでページエラーなし。Nativeの接続は隔離スタブで、実音源やDAWは操作していない。
 
 一時検証：`/private/tmp/check-midi-code-ui.cjs`、結果`/private/tmp/midi-code-ui-report.json`、画面`/private/tmp/midi-code-ui-{chromium,webkit}.png`。
+
+
+2026-11-03追記：上記で後続としていたShell／HTTPS remote連携は[todo004.md](todo004.md)で実装・検証済み。同梱ガイドは/sysへ移り、/lib全体の移動保護は解除され、READMEも通常のプロジェクトファイルとして扱う。過去の記述はその時点の実装記録。

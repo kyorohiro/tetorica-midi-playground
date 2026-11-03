@@ -38,7 +38,7 @@ export function createFileEditor(monaco, container, onChange) {
     quickSuggestions: {other: true, comments: false, strings: true},
   });
   const listener = editor.onDidChangeModelContent(() => {
-    if (current && !current.readOnly && !reconciling) onChange(current.path, editor.getValue());
+    if (current && !current.readOnly && !reconciling) onChange(current.path, editor.getValue({preserveBOM:true}));
   });
   return {
     editor,
@@ -64,13 +64,14 @@ export function createFileEditor(monaco, container, onChange) {
         if (current) views.set(current.path, editor.saveViewState());
         for (const [path, model] of models) {
           if (!Object.hasOwn(files, path)) {
-            if (transfer && (path === transfer.from || path.startsWith(transfer.from + '/'))) {
-              const destination = transfer.to + path.slice(transfer.from.length);
-              if (views.has(path)) views.set(destination, views.get(path));
+            let destination=path;
+            for(const move of Array.isArray(transfer)?transfer:transfer?[transfer]:[]){
+              if(destination===move.from||destination.startsWith(move.from+'/'))destination=move.to+destination.slice(move.from.length);
             }
+            if(destination!==path&&views.has(path))views.set(destination,views.get(path));
             if (current?.path === path) {current = null; editor.setModel(null);}
             model.dispose(); models.delete(path); views.delete(path);
-          } else if (typeof files[path] === 'string' && model.getValue() !== files[path]) {
+          } else if (typeof files[path] === 'string' && model.getValue(undefined,true) !== files[path]) {
             model.setValue(files[path]);
           }
         }

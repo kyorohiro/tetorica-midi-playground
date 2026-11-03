@@ -1,8 +1,23 @@
 import {readFile,writeFile,mkdir,copyFile,cp} from 'node:fs/promises';
 const base=new URL('../',import.meta.url);
 const guides={};
-for(const name of ['README.md','README_jp.md','lib/README.md','lib/README_jp.md']) guides['/'+name]=await readFile(new URL('ui/'+name,base),'utf8');
-await writeFile(new URL('ui/guide.js',base),`// Generated from README.md / README_jp.md by scripts/prepare.mjs\nexport const guides = ${JSON.stringify(guides)};\nexport function withGuide(files) { return {...files, ...guides}; }\nexport function isGuide(path) { return Object.hasOwn(guides, path); }\nexport function canRun(path) { return /\\.(m?js)$/i.test(path); }\n`);
+for(const name of ['README.md','README_jp.md','lib/README.md','lib/README_jp.md']) guides['/sys/'+name]=await readFile(new URL('ui/'+name,base),'utf8');
+await writeFile(new URL('ui/guide.js',base),`// Generated from README.md / README_jp.md by scripts/prepare.mjs
+export const guides = ${JSON.stringify(guides)};
+export function withGuide(files) { return {...files, ...guides}; }
+export function isGuide(path) {
+  if (typeof path !== 'string') return false;
+  const normalized = path.toLowerCase();
+  return normalized === '/sys' || normalized.startsWith('/sys/');
+}
+/** Old projects omitted bundled guides from files. Keep actual README files. */
+export function resolveGuideSelection(path, files = {}) {
+  if (typeof path !== 'string') return path;
+  const replacement = '/sys' + path;
+  return !Object.hasOwn(files, path) && Object.hasOwn(guides, replacement) ? replacement : path;
+}
+export function canRun(path) { return !isGuide(path) && /\\.(m?js)$/i.test(path); }
+`);
 
 await mkdir(new URL('ui/vendor/',base),{recursive:true});
 await copyFile(new URL('node_modules/es-module-lexer/dist/lexer.minimal.asm.js',base),new URL('ui/vendor/module-lexer.js',base));

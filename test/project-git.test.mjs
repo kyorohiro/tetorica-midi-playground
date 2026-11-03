@@ -59,7 +59,7 @@ test('staged and unstaged diffs distinguish edits, binary replacement and deleti
   assert.equal(store.snapshot().files['/index.js'], 'play("E4");\n');
 });
 
-test('branches can be created at HEAD without switching and remote or unsupported actions are rejected', async () => {
+test('branches can be created at HEAD without switching and unsupported actions are rejected', async () => {
   const store = source(), git = repository(store);
   await firstCommit(git);
   assert.deepEqual(await git.execute('branch', {name: 'experiment'}), {current: 'main', local: ['experiment', 'main'], remotes: []});
@@ -67,7 +67,10 @@ test('branches can be created at HEAD without switching and remote or unsupporte
   assert.ok(isBinaryFile(store.snapshot().files['/.git/refs/heads/experiment.js']));
   const reloaded = createProjectFiles(importProject(exportProject({...store.snapshot(), runPath: '/index.js', selected: '/index.js', bpm: 120, clockMode: 'internal'})));
   assert.deepEqual((await repository(reloaded).execute('branch')).local, ['experiment', 'experiment.js', 'main']);
-  for (const action of ['push', 'fetch', 'pull', 'remote', 'checkout', 'merge', 'clone']) await assert.rejects(git.execute(action), /Only local/);
+  for (const action of ['checkout', 'merge', 'clone']) await assert.rejects(git.execute(action), /Unsupported Git operation/);
+  for (const action of ['push', 'fetch', 'pull']) await assert.rejects(git.execute(action), /Tauri app/);
+  await git.execute('remote', {url: 'https://example.invalid/repo'});
+  assert.deepEqual(await git.execute('remote'), [{remote: 'origin', url: 'https://example.invalid/repo.git'}]);
   await assert.rejects(git.execute('config', {path: 'remote.origin.url', value: 'https://example.invalid/repo.git'}), /Supported settings/);
   await assert.rejects(git.execute('stage', {paths: ['/.git/HEAD']}), /metadata/);
 });

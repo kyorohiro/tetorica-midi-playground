@@ -22,8 +22,12 @@ AIは機能追加・設計変更の前にこのファイルを読み、関連す
 
 - [editor_definitions_01.md](editor_definitions_01.md)：補完・ホバーからAPI型定義と実装コードを読む機能、定義ジャンプとFILESの接続。
 
-- [todo003.md](todo003.md)：FILES整理とローカルGit、stopLoop補完、tween／livePrepareの実装・検証。Git remoteは後続、Sync／Revertは保留。
+- [todo003.md](todo003.md)：FILES整理とローカルGit、stopLoop補完、tween／livePrepareの実装・検証。Git remoteの追加はtodo004、Sync／Revertは保留。
 
 このファイルは開発方針の索引であり、アプリの保存機能の仕様ではない。新しい合意事項ができたら、関連メモとこの索引を更新する。
 
 - YM2612 は `midi.enableSoundChip("tetorica-ym2612", {roundRobin: false})` で物理 CH 固定を選択可能。既定は従来の自動割り当て。仕様は midi_sysex_01.md の末尾を参照。
+
+- [todo004.md](todo004.md)：ShellとGitHub／HTTPS remote連携の実装・検証。仮想FILES、Native HTTPS・資格情報保存、/sysガイド分離、手動確認と対応範囲。
+
+- [todo005.md](todo005.md)：Expand相当のレイアウト固定、YM2612版へ寄せるFILESメニューとタブ。MIDI／Mixerは上段。

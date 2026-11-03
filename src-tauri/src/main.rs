@@ -3,6 +3,9 @@ mod midi_message;
 mod synth_core;
 mod test_synth;
 mod clock;
+mod git_dialog;
+mod git_http;
+mod git_tokens;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -11,6 +14,20 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::Manager;
+
+fn allowed(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let url = window.url().map_err(|e| e.to_string())?;
+    let local = url.scheme() == "tauri"
+        || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"));
+    let development = cfg!(debug_assertions)
+        && window.app_handle().config().build.dev_url.as_ref()
+            .is_some_and(|dev| dev.origin() == url.origin());
+    if window.label() == "main" && (local || development) {
+        Ok(())
+    } else {
+        Err("Git controls are available only in the local Tetorica MIDI Playground window".into())
+    }
+}
 
 trait NoteOutput: Send {
     fn send(&mut self, bytes: &[u8]) -> Result<(), String>;
@@ -574,7 +591,16 @@ fn main() {
     tauri::Builder::default()
         .manage(state)
         .manage(test_synth::Rack::default())
+        .setup(|app| {
+            app.manage(git_http::Transport::default());
+            app.manage(git_tokens::setup(app.handle()).map_err(std::io::Error::other)?);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            git_http::git_https_begin,
+            git_http::git_https_request,
+            git_http::git_https_end,
+            git_tokens::git_tokens,
             test_synth::synth_enable,
             test_synth::synth_mix,
             test_synth::synth_status,
@@ -600,6 +626,7 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                let _ = window.state::<git_http::Transport>().clear();
                 let state = window.state::<AppState>();
                 let _ = disconnect(state);
                 let _ = window.state::<test_synth::Rack>().enable(false);

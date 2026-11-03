@@ -1,13 +1,13 @@
 import {createVirtualFileSystem, transferVirtualFiles} from './shared/virtual-files/filesystem.js';
 import {resolvePath} from './shared/virtual-files/path.js';
 import {binaryFile, isBinaryFile} from './project-assets.js';
-import {isGuide, withGuide, canRun} from './guide.js';
+import {isGuide, guides, canRun} from './guide.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_FILES = 1023; // A cassette also contains metadata.json.
 const MAX_DIRECTORIES = 1024;
 const encoder = new TextEncoder();
-const guidePaths = Object.keys(withGuide({}));
+const guidePaths = Object.keys(guides);
 const guideDirectories = guidePaths.map(path => path.slice(0, path.lastIndexOf('/')) || '/');
 const inside = (path, root) => path === root || path.startsWith(root + '/');
 
@@ -29,7 +29,7 @@ export function isInternalProjectPath(path) {
 function ordinaryPath(path) {
   path = normalizeProjectPath(path);
   if (path === '/' || isInternalProjectPath(path)) throw Error('This project path is protected: ' + path);
-  if (path.toLowerCase() === '/metadata.json' || guidePaths.some(guide => inside(guide, path) || inside(path, guide))) throw Error('Bundled guides and the project manifest are protected: ' + path);
+  if (isGuide(path) || inside(path.toLowerCase(), '/metadata.json')) throw Error('Bundled guides and the project manifest are protected: ' + path);
   return path;
 }
 
@@ -49,9 +49,11 @@ function validated(files, directories = []) {
   let total = 0;
   for (const [path, value] of Object.entries(files)) {
     if (normalizeProjectPath(path) !== path || path === '/') throw Error('Invalid project file path: ' + path);
-    if (isGuide(path)) continue;
-    if (guidePaths.some(guide => inside(guide, path))) throw Error('Project file blocks a bundled guide: ' + path);
-    if (path.toLowerCase() === '/metadata.json') throw Error('metadata.json is reserved for the project manifest');
+    if (isGuide(path)) {
+      if (Object.hasOwn(guides, path)) continue;
+      throw Error('Bundled guide namespace is protected: ' + path);
+    }
+    if (inside(path.toLowerCase(), '/metadata.json')) throw Error('metadata.json is reserved for the project manifest');
     if (typeof value !== 'string' && !isBinaryFile(value)) throw Error('Invalid project file: ' + path);
     if (canRun(path) && !isInternalProjectPath(path) && typeof value !== 'string') throw Error('JavaScript files must contain text: ' + path);
     const data = typeof value === 'string' ? value : Uint8Array.from(value.bytes);
@@ -62,7 +64,7 @@ function validated(files, directories = []) {
   for (const path of directories) {
     if (normalizeProjectPath(path) !== path) throw Error('Invalid project directory path: ' + path);
     if (path === '/') continue;
-    if (isGuide(path) || path.toLowerCase() === '/metadata.json') throw Error('Protected project directory path: ' + path);
+    if (isGuide(path) || inside(path.toLowerCase(), '/metadata.json')) throw Error('Protected project directory path: ' + path);
     if (dirs.includes(path)) throw Error('Duplicate project directory: ' + path);
     dirs.push(path);
   }

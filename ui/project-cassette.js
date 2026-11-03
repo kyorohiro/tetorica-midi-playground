@@ -1,6 +1,6 @@
 import {isBinaryFile,binaryFile,fileBytes} from './project-assets.js';
 import {zipSync, unzipSync, strToU8} from './vendor/fflate.js';
-import {isGuide, canRun} from './guide.js';
+import {isGuide, guides, canRun, resolveGuideSelection} from './guide.js';
 import {createProjectFiles, isInternalProjectPath, normalizeProjectPath} from './project-files.js';
 
 export const MAX_PROJECT_BYTES = 16 * 1024 * 1024;
@@ -21,12 +21,15 @@ function validateProject(project) {
     if (typeof text !== 'string' && !isBinaryFile(text)) throw Error('Invalid project file: ' + path);
     if (canRun(path) && !isInternalProjectPath(path) && typeof text !== 'string') throw Error('JavaScript files must contain text: ' + path);
     if (path === '/' + MANIFEST) throw Error('metadata.json is reserved for the project manifest');
-    if (!isGuide(path)) files[path] = text;
+    if (isGuide(path)) {
+      if (!Object.hasOwn(guides, path)) throw Error('Bundled guide namespace is protected: ' + path);
+    } else files[path] = text;
   }
   if (!canRun(project.runPath) || isInternalProjectPath(project.runPath) || !Object.hasOwn(files, project.runPath)) throw Error('Project Run file is missing or not JavaScript');
   if (!Number.isFinite(project.bpm) || project.bpm < 1 || project.bpm > 999) throw Error('Project BPM must be between 1 and 999');
   if (!['internal', 'external'].includes(project.clockMode)) throw Error('Invalid project beat clock');
-  const selected = (!isInternalProjectPath(project.selected) && Object.hasOwn(files, project.selected)) || isGuide(project.selected) ? project.selected : project.runPath;
+  const resolvedSelection = resolveGuideSelection(project.selected, files);
+  const selected = (!isInternalProjectPath(resolvedSelection) && Object.hasOwn(files, resolvedSelection)) || Object.hasOwn(guides, resolvedSelection) ? resolvedSelection : project.runPath;
   const hasDirectories = Object.hasOwn(project, 'directories');
   const store = createProjectFiles({files, directories: hasDirectories ? project.directories : []});
   const result = {files: store.snapshot().files, runPath: project.runPath, selected, bpm: project.bpm, clockMode: project.clockMode};

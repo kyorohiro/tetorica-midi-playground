@@ -1,6 +1,6 @@
 # Tetorica MIDI Playground — はじめに
 
-For English instructions, open README.md in FILES.
+For English instructions, open /sys/README.md in FILES.
 
 JavaScriptでGarageBandの楽器を演奏してみましょう。
 TetoricaはMIDI（演奏指示）を送り、GarageBandが音を鳴らします。
@@ -12,6 +12,12 @@ TetoricaはMIDI（演奏指示）を送り、GarageBandが音を鳴らします�
 - Tetorica MIDI Playgroundアプリ
 
 配布されたアプリを使う場合、Node.jsやRustは不要です。
+
+## 画面の使い方
+
+画面は常にウィンドウ全体を使い、上のツールバーに**Menu**、左側に**FILES**を表示します。上段は**Code / YM2612 / Sega PSG / MIDI / Mixer**、下段は**Console / Shell / Keyboard / Helper**です。上下の選択は独立しているので、ConsoleやShellを開いたままコードを編集できます。ファイルを開くとCodeへ戻り、下段の選択は維持します。
+
+**Panel**で下段を表示・非表示にし、**×**でも閉じられます。再び開くと前の下段の選択へ戻ります。縦の境界をドラッグするとFILESの幅、横の境界では下段の高さを調整できます。サイズは再起動後も保持し、境界のダブルクリックで既定のサイズへ戻します。境界へフォーカスして矢印キーで微調整、Shift＋矢印で大きく調整、Home／Endで最小／最大にできます。タブの矢印キー・Home／End操作は同じ段の中だけで移動します。
 
 ## 1. GarageBandを準備する
 
@@ -197,7 +203,7 @@ Run file内の直接inline `liveLoop("lead", async () => { ... })` はplay/beat/
 
 MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます。Runやコードは不要です。画面のキーを押し続けるか、表示に対応する数字・英字のPCキーで演奏し、離すとNote Offを送ります。MIDIチャンネル1〜16・velocity1〜127を指定でき、同じチャンネルで和音も弾けます。楽器・フレットの選択はFM版と同じ指板配置を変えるもので、音色はDAW側で選びます。
 
-タブ・チャンネル・配置変更、ウィンドウ離脱、Release notes、Stopで保持音を解放します。Codeタブ横のKeyboard inputはスクリプトイベント用で、別機能です。同じチャンネル・音程が重なる場合は最後の発音元を優先し、古いキー解放で新しい音を消さないようにします。
+Keyboardを非表示にしたとき、チャンネル・配置変更、ウィンドウ離脱、Release notes、Stopで保持音を解放します。Keyboardが見えていれば、上段のタブを切り替えてもそのまま試奏できます。Codeタブ横のKeyboard inputはスクリプトイベント用で、別機能です。同じチャンネル・音程が重なる場合は最後の発音元を優先し、古いキー解放で新しい音を消さないようにします。
 
 ## 内蔵YM2612で試す（macOS試験版）
 
@@ -291,7 +297,7 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: CH2});
 
 ## ライブラリの再利用
 
-FILESの`lib/README_jp.md`に手順を記載しています。`examples/09_library.js`はDAWなしで試せます。`lib/phrase.js`の`playPhrase(context, output, notes, options)`にはJSDoc補完用の型を記載しています。例は`await import("../lib/phrase.js")`で読み込み、liveLoopのcontextを明示的に渡すことで停止に追従します。import先はRun fileのローカルなヘルパーを参照できません。ライブラリコードは編集可能で、保存済みの編集は保持します。
+FILESの`/sys/lib/README_jp.md`に手順を記載しています。`examples/09_library.js`はDAWなしで試せます。`lib/phrase.js`の`playPhrase(context, output, notes, options)`にはJSDoc補完用の型を記載しています。例は`await import("../lib/phrase.js")`で読み込み、liveLoopのcontextを明示的に渡すことで停止に追従します。import先はRun fileのローカルなヘルパーを参照できません。ライブラリコードは編集可能で、保存済みの編集は保持します。
 
 `pg.` からMIDI APIを辿れます（`pg.midi.output(...)`、`pg.play(...)`、`pg.liveLoop(...)`）。`context` と `pg.context` は任意の値を保存する同じ共有オブジェクトで、Applyで保持され、Runでリセットされます。`liveLoop` のコールバック引数（`context` など）はループ用APIです。引数を明示する場合、`context.pg` でループ用API、`context.context` で共有状態へアクセスできます。引数なしのインラインコールバックでは、`pg` が自動的にループ用APIに切り替わります。
 
@@ -395,11 +401,13 @@ await lead.play("C4", {duration: 1, velocity: 100});
 
 ## FILES整理とローカルGit
 
-**FILES → + / Folder+**でファイル・フォルダーを作成できます。**⋯**は開いているファイルの操作、右クリックは対象ファイル／フォルダーの名前変更・移動・コピー・削除・相対パスコピーです。`/parts/bass.js`のようなプロジェクト内パスを入力します。フォルダーへドラッグすると移動、Ctrl／Optionを押しながらならコピーです。ImportはJS・テキスト／JSON・TFI／VGIの複数ファイルを現在のフォルダーへ取り込みます。同名パスは上書きしません。構造変更時は演奏を停止します。
+**FILES**のファイル・フォルダーを右クリックすると、その近くに**Copy Relative Path / Copy / Paste / Delete / Cut / Rename… / New File… / New Folder…**を表示します。**⋯**は表示中のファイルに対する同じメニューです。**+ / Folder+**からもファイル・フォルダーを作成できます。新規作成では`/parts/bass.js`のようなプロジェクト内パスを入力でき、**Rename…**は現在のフォルダー内で名前だけを変更します。移動は**Cut**して移動先フォルダーのメニューから**Paste**するか、フォルダーへのドラッグで行います。Ctrl／Optionを押しながらドラッグするとコピーです。
+
+**Copy**はファイル・フォルダーのテキストとバイナリを、その時点の内容で保持します。コピー後に元を編集してもPasteはコピー時の内容を使い、同名の項目があれば`bass-copy.js`、`bass-copy-2.js`のような空いている名前を付けます。**Cut / Paste**は現在の元データを移動し、同名の移動先がある場合はエラーにします。**Copy Relative Path**はプロジェクトルートからの相対パスをコピーします。ImportはJS・テキスト／JSON・TFI／VGIの複数ファイルを現在のフォルダーへ取り込み、同名パスは上書きしません。構造変更時は演奏を停止します。
 
 移動するとRun fileと表示ファイルも追従します。無変更ファイルのUndoは保持し、移動したファイルはカーソル・表示位置を引き継ぎますが、モデルとUndo履歴は新しくなります。コード内の相対importや`loadVoice()`の文字列は自動変更しないため、移動後に見直してください。同梱ガイドと`.git`は保護され、実行可能なJSを最低1つ残す必要があります。削除・移動した同梱exampleは再起動しても復活しません。
 
-**Menu → Git…**では、このプロジェクトのローカルGitを操作できます。Initialize → 差分確認 → Stage → 作者名・メール・messageを入力 → Commitの順で保存し、Historyで履歴を読めます。ファイルごとのStage／Diffもあります。Branchは現在のcommitを指すブランチの作成のみで、切り替え・remote操作は後続対応です。対象は仮想FILESで、Mac上の実リポジトリを操作する機能ではありません。
+**Menu → Git…**では、このプロジェクトのローカルGitを操作できます。Initialize → 差分確認 → Stage → 作者名・メール・messageを入力 → Commitの順で保存し、Historyで履歴を読めます。ファイルごとのStage／Diffもあります。Branchは現在のcommitを指すブランチの作成のみで、ブランチ切り替えは未対応です。HTTPS remoteの操作は下記を参照してください。対象は仮想FILESで、Mac上の実リポジトリを操作する機能ではありません。
 
 Git履歴・バイナリ音色・空フォルダーは自動保存とカセットのExport／Importに含まれます。`.git`はFILESに表示せず、演奏Workerにも渡しません。Git更新前にファイル本体の16 MiB／1024ファイル上限を検証します。Export時にはメタデータ・ZIPの追加分も含めた上限を確認します。アプリ外にもバックアップを残すにはExport projectを使ってください。New Projectではファイルと一緒にGit履歴も置き換わります。Git操作だけでコードが実行されることはありません。
 
@@ -433,3 +441,44 @@ liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
 `tween({seconds: 1}, callback)`は経過秒数、`{beats: 4}`は内部BPMの変更または実際の外部MIDI Clockに追従します。数値だけの指定は秒です。正の長さなら0→増加する進捗→1を渡し、0秒／0拍なら1だけを一度呼びます。async callbackは順番に待つため重複実行しません。音声サンプル単位の処理ではなく、タイマーでMIDIを変える補助機能です。`lerp()`で進捗を目的の値へ変換できます。
 
 ループ内ではループ用`tween`／`ctx.tween`／`ctx.pg.tween`を使い、`stopLoop()`・同名Apply置換で停止できます。停止時に最終値1を強制しません。すでに実行を始めたasync callbackは完了後に再び停止を確認します。StopはWorker全体を終了します。`examples/17_tween.js`で試してください。`stopLoop("…")`の名前候補は、編集中ファイル内の`liveLoop()`／`pg.liveLoop()`の文字列名から補完します。
+
+
+## Shell
+
+**Shell**タブでは、エディターと同じFILES・Gitをコマンドで操作できます。1コマンドずつ入力してEnter。↑／↓で履歴、**Stop command**で実行中断、**Clear**で表示を消せます。
+
+```text
+pwd
+ls
+mkdir parts
+echo "export const notes = ['C4', 'E4', 'G4'];" > parts/notes.js
+cat parts/notes.js | rg -F C4 -
+mv parts/notes.js parts/phrase.js
+```
+
+`help`／`help COMMAND`で対応する書式を確認できます。移動・一覧・読み取り・検索、リダイレクトなしのechoでは演奏を止めません。ファイルを変更するコマンドは演奏を止め、エディター・選択・Run fileへ反映します。失敗したコマンド／パイプの変更は部分反映しません。同時編集・New／Import・中断時も、古い内容を書き戻さないよう検証します。パイプと`<`・`>`・`>>`に対応し、Gitはパイプやリダイレクトと分けて実行します。
+
+対象は仮想プロジェクト内のFILESです。OSコマンド、パッケージ導入、任意JavaScriptの実行、コマンド連結・変数展開は扱いません。Shellのsnapshot／undo／diffは公開せず、履歴はGitを使います。同梱ガイドは保護された`/sys/`へ移し、プロジェクト保存から除外しました。プロジェクトの`README.md`・`lib/README.md`は編集・Git管理できます。`.git`は通常操作から隠し、Gitだけで管理します。
+
+## GitHubとHTTPS remote
+
+まずGitHubで**空のリポジトリ**を作ります（READMEや初期commitなし）。**Menu → Git…**でtokenの名前とhost（`https://github.com`）を入力して**Add token…**を押し、PAT本体はNative画面へ入力します。対象リポジトリへ必要な読み書き権限を持つPATを使ってください。秘密はOS資格情報ストアへ保存し、FM2612版とは保存領域を分けています。JavaScript・FILES・ログ・カセットへPAT本文は渡しません。登録済みtokenの選択・削除もでき、Nativeの接続画面では前回選択を候補にします。
+
+Git画面かShellで、次の順に進めます。
+
+```text
+cd /
+git init
+git config user.name "Your Name"
+git config user.email "you@example.com"
+git add .
+git commit -m "First sketch"
+git remote add origin https://github.com/OWNER/REPOSITORY.git
+git push -u origin main
+```
+
+URL・作者名・メールは自分の値へ置き換えてください。push前のNative画面で、送信先・ブランチ・commitを確認して許可します。その前には送信しません。以降の`git fetch`はremote履歴を更新し、`git pull`は作業ツリーに未commitの変更がなく、現在のブランチをfast-forwardできるときに反映します。分岐した履歴は拒否し、merge・checkout・cloneは未対応です。HTTPS URLへの資格情報埋め込みは受け付けません。
+
+既定プロジェクトにはスターターファイルがあるため、無関係な既存GitHubリポジトリをcloneして読み込む手順ではありません。既存プロジェクトはGit履歴入りのMIDIカセットをImportして再開し、同じ履歴をpullしてください。pull後も実行可能なJSを最低1つ残し、FILESのサイズ制約を満たす必要があります。取得したUTF-8コード・READMEは編集可能なテキストにし、BOMも保持します。TFI／VGI・Gitオブジェクトはバイナリのままです。BOM付きファイルを表示しただけでGitが変更扱いにすることもありません。
+
+hostに対応するtokenがなければ、公開remoteのfetch／pullはNative確認後に匿名接続できます。非公開リポジトリとpushには適切なtokenが必要です。資格情報はアプリ側、remote URLとGit履歴はカセット側に保存します。アプリ外のバックアップはExport projectを使ってください。実GitHub認証・DAW／機器のタイミングは手動確認の対象で、自動検証は隔離transportで行っています。
