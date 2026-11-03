@@ -25,11 +25,20 @@ import {installWorkbenchResize} from './workbench-resize.js';
 const invoke=window.__TAURI__.core.invoke;
 const $=id=>document.getElementById(id);
 let auditionKeyboard=null;
+function updateOutputActions(state){
+  const tab=state?.dockOpen?state.bottomTab:null;
+  const shell=tab==='shell';
+  $('outputActions').hidden=!shell&&tab!=='console';
+  $('outputMenuButton').setAttribute('aria-label',shell?'Shell menu':'Console menu');
+  $('outputMenuButton').title=shell?'Shell menu':'Console menu';
+  $('shellHelpButton').hidden=!shell;
+  for(const id of ['outputMenu','shellHelp'])$(id).hidePopover?.();
+}
 const ui=createPlaygroundUi({dockedPanels:true,primaryTabs:['code','synthA','synthB','operator','mixer'],
   dock:$('workbenchDock'),dockDivider:$('bottomPanelDivider'),dockToggle:$('dockToggle'),dockClose:$('dockClose'),initialBottomTab:'console',initialDockOpen:true,
   extraTabs:["shell","synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),
   ...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),
-  onBottomTabChange:(tab,state)=>{const view=state?.dockOpen&&state.bottomTab==='keyboard'?'keyboard':state?.primaryTab??tab;auditionKeyboard?.setView(view);$('keyboardInput').hidden=(state?.primaryTab??tab)!=='code'||view==='keyboard';}});
+  onBottomTabChange:(tab,state)=>{const view=state?.dockOpen&&state.bottomTab==='keyboard'?'keyboard':state?.primaryTab??tab;auditionKeyboard?.setView(view);$('keyboardInput').hidden=(state?.primaryTab??tab)!=='code'||view==='keyboard';updateOutputActions(state);}});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
 installWorkbenchResize({workbench:$('workbench'),fileExplorer:$('fileExplorer'),fileDivider:$('fileExplorerDivider'),dock:$('workbenchDock'),dockDivider:$('bottomPanelDivider')});
@@ -103,7 +112,7 @@ gitPanel=mountProjectGit({button:$('gitSettings'),getStore:()=>projectStore,...n
   beforeCommand:async action=>{flushEditor();if(action==='pull')await stop();},
   validateReplacement(entries,dirs,action){if(action==='pull'&&!entries.some(file=>canRun(file.path)&&!isInternalProjectPath(file.path)&&typeof file.data==='string'))throw Error('The remote project must contain at least one JavaScript file. Previous files kept.');},
   onChanged:()=>{exactProjectFiles=true;publishProjectFiles();},onError:projectError,onStatus:text=>ui.setStatus(text)});
-shellPanel=mountProjectShell({root:$('shellPanel'),getStore:()=>projectStore,beforeCommand:flushEditor,beforeMutation:()=>stop(),
+shellPanel=mountProjectShell({root:$('shellPanel'),stopButton:$('shellStop'),getStore:()=>projectStore,beforeCommand:flushEditor,beforeMutation:()=>stop(),
   onChanged:(_,detail)=>{exactProjectFiles=true;publishProjectFiles(detail);},git:()=>gitPanel,onError:projectError});
 $('shellTab').addEventListener('click',()=>shellPanel.focus());
 openFile(selected);
@@ -190,7 +199,11 @@ $('confirmProjectImport').onclick=()=>run(async()=>{
 $('midiSettings').onclick=()=>{$('mainMenu').open=false;ui.setBottomTab('operator');};
 $('midiConnection').onclick=()=>ui.setBottomTab('operator');
 function showConnection(snapshot){const {state,text}=connectionStatus(snapshot);const button=$('midiConnection');button.dataset.state=state;if(button.textContent!==text)button.textContent=text;button.title=text+' · Open MIDI settings. Port connection does not confirm DAW audio output.';const status=$('outputStatus');if(status.textContent!==text)status.textContent=text;status.dataset.state=state;$('scriptOutputStatus').textContent=`Script outputs: ${snapshot?.script_output_count??0} additional connection(s)`;}
-$('clearConsole').onclick=()=>ui.clearConsole();
+$('clearOutput').onclick=()=>{
+  $('outputMenu').hidePopover?.();
+  if(ui.getTabState().bottomTab==='shell')shellPanel.clearOutput();
+  else {ui.clearConsole();$('consoleOutput').focus();}
+};
 async function run(fn){try{await fn();}catch(e){ui.setStatus('Error — see Console: '+String(e));ui.logLine(String(e));}}
 let worker=null,epoch=0,activeRunId=null,inputGeneration=0;
 const pressedKeys=new Map();

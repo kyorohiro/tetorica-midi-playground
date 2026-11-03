@@ -137,15 +137,21 @@ export function createProjectShell({getStore, beforeCommand = () => {}, beforeMu
 }
 
 /** Mounts a compact Shell panel. The caller owns its tab/panel visibility. */
-export function mountProjectShell({root, onError = () => {}, ...options}) {
-  root.innerHTML = `<div class="project-shell-toolbar"><span data-shell-cwd>/</span><button type="button" data-shell-stop disabled>Stop command</button><button type="button" data-shell-clear>Clear</button></div><pre data-shell-output tabindex="0" aria-label="Shell output"></pre><form data-shell-form><label for="projectShellInput">$</label><input id="projectShellInput" data-shell-input autocomplete="off" spellcheck="false" aria-label="Shell command" placeholder="help"><button type="submit">Execute</button></form><small>Commands operate on FILES. GitHub connections use Git settings. No OS shell.</small>`;
+export function mountProjectShell({root, stopButton, onError = () => {}, ...options}) {
+  root.innerHTML = `<div class="project-shell-terminal" data-shell-terminal aria-label="Project terminal"><pre data-shell-output tabindex="0" aria-label="Shell output"></pre><form data-shell-form><label for="projectShellInput" data-shell-prompt>/ $</label><input id="projectShellInput" data-shell-input autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Shell command" placeholder="help"></form></div>`;
   const find = selector => root.querySelector(selector);
-  const output = find('[data-shell-output]'), input = find('[data-shell-input]'), form = find('[data-shell-form]'), stop = find('[data-shell-stop]'), directory = find('[data-shell-cwd]');
+  const output = find('[data-shell-output]'), input = find('[data-shell-input]'), form = find('[data-shell-form]'), terminal = find('[data-shell-terminal]'), prompt = find('[data-shell-prompt]');
   const controller = createProjectShell(options), history = [];
   let historyIndex = 0, draftInput = '', disposed = false, viewGeneration = 0;
   output.textContent = 'Virtual FILES Shell. Type help for commands.\n';
-  function append(text) { output.textContent = (output.textContent + text).slice(-200000); output.scrollTop = output.scrollHeight; }
-  function controls(busy) { input.disabled = busy; form.querySelector('button').disabled = busy; stop.disabled = !busy; directory.textContent = controller.cwd; }
+  const scroll = () => {terminal.scrollTop = terminal.scrollHeight;};
+  function append(text) { output.textContent = (output.textContent + text).slice(-200000); scroll(); }
+  function controls(busy) {
+    input.readOnly = busy;
+    if (stopButton) {stopButton.disabled = !busy;stopButton.hidden = !busy;}
+    prompt.textContent = controller.cwd + ' $';
+  }
+  function clearOutput() {output.textContent = '';scroll();input.focus();}
   async function execute(source = input.value) {
     if (disposed || controller.busy || !source.trim()) return;
     const epoch = viewGeneration;
@@ -164,6 +170,7 @@ export function mountProjectShell({root, onError = () => {}, ...options}) {
   }
   form.onsubmit = event => { event.preventDefault(); void execute(); };
   input.onkeydown = event => {
+    if (event.isComposing || input.readOnly) return;
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
     event.preventDefault();
     if (historyIndex === history.length) draftInput = input.value;
@@ -171,11 +178,24 @@ export function mountProjectShell({root, onError = () => {}, ...options}) {
     input.value = historyIndex === history.length ? draftInput : history[historyIndex];
     input.setSelectionRange(input.value.length, input.value.length);
   };
-  stop.onclick = () => controller.stop();
-  find('[data-shell-clear]').onclick = () => { output.textContent = ''; };
+  const stop = () => controller.stop();
+  const shortcut = event => {
+    if (event.isComposing || !event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key.toLowerCase() === 'l') {event.preventDefault();clearOutput();}
+    else if (event.key.toLowerCase() === 'c') {
+      if (globalThis.getSelection?.()?.toString() || (event.target === input && input.selectionStart !== input.selectionEnd)) return;
+      event.preventDefault();append(`${controller.cwd} $ ${input.value}^C\n`);input.value = '';draftInput = '';historyIndex = history.length;
+      stop();input.focus();scroll();
+    }
+  };
+  const focusTerminal = event => {if (event.target === terminal && !globalThis.getSelection?.()?.toString()) input.focus();};
+  root.addEventListener('keydown',shortcut);
+  terminal.addEventListener('click',focusTerminal);
+  stopButton?.addEventListener('click',stop);
+  controls(false);
   return {
-    execute, focus() { input.focus(); },
-    invalidate() { viewGeneration++; controller.invalidate(); history.length = 0; historyIndex = 0; draftInput = ''; input.value = ''; output.textContent = 'Project changed. Shell working directory reset to /.\n'; directory.textContent = '/'; },
-    dispose() { disposed = true; viewGeneration++; controller.dispose(); root.replaceChildren(); },
+    execute, clearOutput, focus() { input.focus();scroll(); },
+    invalidate() { viewGeneration++; controller.invalidate(); history.length = 0; historyIndex = 0; draftInput = ''; input.value = ''; output.textContent = 'Project changed. Shell working directory reset to /.\n'; prompt.textContent = '/ $';scroll(); },
+    dispose() { disposed = true; viewGeneration++; controller.dispose(); root.removeEventListener('keydown',shortcut);terminal.removeEventListener('click',focusTerminal);stopButton?.removeEventListener('click',stop);root.replaceChildren(); },
   };
 }

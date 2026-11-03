@@ -418,7 +418,7 @@ Use loop-local `tween` / `ctx.tween` / `ctx.pg.tween` to cancel on `stopLoop()` 
 
 ## Shell
 
-The **Shell** tab shares FILES and Git with the editor. Enter one command at a time; use ↑/↓ for command history, **Stop command** to cancel a pending command, and **Clear** to clear output.
+The **Shell** tab shares FILES and Git with the editor. Output and the command prompt share one terminal area. Enter one command at a time; use ↑/↓ for command history. **⋯ → Clear output** clears the current Shell or Console view. In Shell, Ctrl+L also clears output; **Stop** appears beside the tabs while a command is running, and Ctrl+C cancels it when no text is selected. **?** shows Shell help.
 
 ```text
 pwd

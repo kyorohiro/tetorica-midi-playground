@@ -25,3 +25,15 @@
 - ガイド選択中のImportは直下、通常ファイル選択中のImportは親フォルダーへ入ることと、Menu → MIDI settingsでメニューが閉じて上段MIDIへ切り替わることも両エンジンで確認。
 - 英日ガイドを更新して`node scripts/prepare.mjs`で再生成。検証証跡は`/private/tmp/midi-workbench-ui-report.json`、画面は`/private/tmp/midi-workbench-{chromium,webkit}-{800,1100}.png`。
 - ブラウザーでの検証はネイティブ版のUIを隔離実行したもの。今回のUI変更では実音源・DAW・実remote・資格情報を操作していない。
+
+## Shell／Consoleの省スペース化（追加依頼）
+
+- [x] YM2612版のShell／ConsoleとClear操作の有無を確認する。
+- [x] MIDI版のClearを下段タブ列の小さいメニューへ移し、出力専用の操作行をなくす。ShellはYM2612版と同様、出力と入力を同じターミナル領域へまとめる。
+- [x] Shellの履歴・停止・スクロール・Clear、ConsoleのClear、タブ切替と小さい下段サイズでの表示を確認し、ガイドを更新する。
+
+YM2612版のConsoleには手動Clearがなく、Run時等の内部処理で消去する。Shellにはタブ列の⋯内にClear output、Ctrl+Lの操作がある。今回の変更対象はMIDI版。
+
+MIDI版はConsole／Shell選択時だけ下段タブ列へ⋯を表示し、Clear outputは表示中の出力だけを消す。Shellは独立した操作行、Executeボタン、常設補足文を廃止し、出力・プロンプト・入力を1つのスクロール領域へまとめた。停止は実行中だけタブ列へ表示する。Ctrl+LでShell表示消去、Ctrl+CでShellコマンドだけを中断し、テキスト選択中の通常コピーを維持する。説明は?へ移した。タブ変更・下段を閉じる操作でポップオーバーも閉じる。
+
+関連JavaScript15件、構文チェック、`git diff --check`成功。英日ガイドを更新して再生成した。Chromium／WebKitで本番UIのClear分離・ポップオーバー・履歴・cd後のプロンプト・Ctrl+L・選択中のCtrl+C・偽の保留中Git操作の中断を確認。Clear／中断で音楽のStopを呼ばず、120pxの下段でもスクロールして入力できる。既存UI回帰も成功、ページ例外なし。画面は`/private/tmp/midi-compact-shell-{chromium,webkit}-{800,1100}.png`。

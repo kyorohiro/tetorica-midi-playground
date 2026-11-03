@@ -445,7 +445,7 @@ liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
 
 ## Shell
 
-**Shell**タブでは、エディターと同じFILES・Gitをコマンドで操作できます。1コマンドずつ入力してEnter。↑／↓で履歴、**Stop command**で実行中断、**Clear**で表示を消せます。
+**Shell**タブでは、エディターと同じFILES・Gitをコマンドで操作できます。出力と入力プロンプトを同じターミナルに表示し、1コマンドずつ入力してEnter、↑／↓で履歴を使います。タブ列の**⋯ → Clear output**で表示中のShellまたはConsoleを消せます。ShellではCtrl+Lでも表示を消せます。実行中だけタブ横に**Stop**を表示し、文字を選択していない状態のCtrl+Cでもコマンドを中断できます。**?**でShellの操作説明を開きます。
 
 ```text
 pwd
