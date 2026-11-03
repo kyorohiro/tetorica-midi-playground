@@ -6,6 +6,9 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {apiTypes} from '../ui/api-types.js';
 import {configureJavaScript} from '../ui/editor.js';
+import {bundledExamples} from '../ui/example-files.js';
+import {legacyTypeExamples} from '../ui/legacy-type-examples.js';
+import {upgradeExampleTypes} from '../ui/example-migrations.js';
 // Use Monaco's actual bundled language service; replace only its browser worker transport.
 const source=await readFile(new URL('../node_modules/monaco-editor/esm/vs/language/typescript/ts.worker.js',import.meta.url),'utf8');
 const previous=globalThis.self;globalThis.self={};
@@ -145,6 +148,21 @@ test('shared context initialization sample exposes its JSDoc state and output ty
  assert.ok((await completions(sample+'\nstate.instrument./*here*/')).includes('play'));
  const options=await completions(sample+'\nstate.instrument.play("C4",{/*here*/});');
  for(const name of ['duration','velocity'])assert.ok(options.includes(name),name);
+});
+
+test('saved legacy voice sample upgrades without TS2739 and retains its state types',async()=>{
+ const path='/examples/13_ym2612_voice.js';
+ const old=legacyTypeExamples[path];
+ const oldErrors=await diagnostics(language(old));
+ assert.ok(oldErrors.some(item=>item.code===2739),JSON.stringify(oldErrors));
+ const migrated=upgradeExampleTypes({[path]:old},bundledExamples)[path];
+ assert.notEqual(migrated,old);
+ assert.deepEqual(await diagnostics(language(migrated)),[]);
+ const members=await completions(migrated+'\nstate.lead./*here*/');
+ for(const name of ['play','setVoice'])assert.ok(members.includes(name),name);
+ // After initialization the assignment narrows ready to true; inspect its first read.
+ const hover=await language(migrated).getQuickInfoAtPosition('file:///index.js',migrated.indexOf('state.ready')+'state.'.length+1);
+ assert.match(hover.displayParts.map(part=>part.text).join(''),/ready: boolean/);
 });
 
 test('low-level MIDI APIs complete as globals, pg members and loop helpers',async()=>{

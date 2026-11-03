@@ -1,7 +1,7 @@
 import {toNativeNote} from './midi-channels.js';
 import {isBinaryFile,binaryFile,fileBytes,filePreview} from './project-assets.js';
 import {exportProject,importProject,MAX_PROJECT_BYTES} from './project-cassette.js';
-import {mergeExamples} from './example-migrations.js';
+import {mergeExamples,upgradeExampleTypes} from './example-migrations.js';
 import {mountOutputMappings} from './output-mappings.js';
 import {bundledExamples} from './example-files.js';
 import {mountSynthRack} from './synth-rack.js';
@@ -28,7 +28,7 @@ try{projectName=projectFileName(savedProject?.name??'my-project').replace(/\.mid
 let files={};
 try{const stored=savedProject?.files??JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&(typeof v==='string'||(isBinaryFile(v)&&!canRun(k))));if(entries.length)files=Object.fromEntries(entries);}}catch{}
 let exactProjectFiles=savedProject?.exactFiles===true;
-if(!exactProjectFiles)files=mergeExamples(files,bundledExamples);
+files=exactProjectFiles?upgradeExampleTypes(files,bundledExamples):mergeExamples(files,bundledExamples);
 files=withGuide(exactProjectFiles?files:ensureEntry(files, leadExample));
 let runPath=canRun(savedProject?.runPath)&&Object.hasOwn(files,savedProject.runPath)?savedProject.runPath:Object.keys(files).find(canRun)??'/index.js';
 if(!savedProject)runPath='/index.js';
@@ -83,8 +83,9 @@ document.addEventListener('click',event=>{if(!$('mainMenu').contains(event.targe
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('mainMenu').open){$('mainMenu').open=false;$('mainMenu').querySelector('summary').focus();}});
 async function replaceProject(project,name){
   await stop();
-  localStorage.setItem(projectStorageKey,JSON.stringify({...project,exactFiles:true,name}));
-  projectName=name;exactProjectFiles=true;files=withGuide(project.files);runPath=project.runPath;
+  const restoredFiles=upgradeExampleTypes(project.files,bundledExamples);
+  localStorage.setItem(projectStorageKey,JSON.stringify({...project,files:restoredFiles,exactFiles:true,name}));
+  projectName=name;exactProjectFiles=true;files=withGuide(restoredFiles);runPath=project.runPath;
   $('bpm').value=project.bpm;$('clockMode').value=project.clockMode;
   expanded.clear();codeEditor?.replaceFiles(files);
   openFile(project.selected);ui.clearConsole();ui.setBottomTab('code');
