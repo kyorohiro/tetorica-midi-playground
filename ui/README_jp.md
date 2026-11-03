@@ -175,6 +175,10 @@ JavaScriptの型・構文診断を有効にしています。たとえば`play("
 
 補完はECMAScript標準とMIDIヘルパーを対象にし、screenLeftなどのWindow/DOMグローバルを除外します。ローカル変数・JavaScript標準メソッドの補完は維持します。
 
+補完の説明とホバーには、**MidiOutput**・**MidiPlayOptions**などのAPI型へのリンクがあります。補完候補の**Read More**（候補表示中にCtrl+Spaceでも可）で説明を開き、型のリンクをクリックすると定義を読めます。**F12／Go to Definition**でもAPI定義やFILES内の関数をたどれます。複数の定義候補が出た場合は目的のものを選んでください。
+
+API定義は別の読取専用ビューアーで開きます。リンクやF12で関連型をたどり、**View implementation**で選択した定義のJavaScript実装を読めます。実装内のimport先も参照でき、リンクや実装表示から進んだ後は**Back**、編集へ戻るときは**Close**を使います。内部ソースは閲覧用で、FILESやエクスポートするプロジェクトへは追加されません。自分のFILES内の定義は通常のエディターで開きます。
+
 ## 外部拍Clock（試験版）
 
 MIDI設定でClock入力を接続し、**External MIDI (trial)** を選択してRunを押した後、送信元でStartまたはContinueを送ります。スクリプトはその受信まで待ちます。beat・nextBeatは24パルス＝1拍で待機し、setBpmでは変化しません。playの音長もClockパルスに追従します。詳細な制限は末尾を参照してください。

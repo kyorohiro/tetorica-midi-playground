@@ -7,6 +7,8 @@ import {bundledExamples} from './example-files.js';
 import {mountSynthRack} from './synth-rack.js';
 import {mountKeyboard} from './keyboard-tab.js';
 import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from './editor.js';
+import {createDefinitionViewer} from './editor-definitions.js';
+import {registerDefinitionLinks} from './editor-definition-links.js';
 import {keyData} from './keyboard.js';
 import {connectionStatus,midiOutputChoices} from './connection.js';
 import {leadExample} from './examples.js';
@@ -241,13 +243,21 @@ run(refresh);
 // Keep the textarea usable while the locally bundled editor loads or if it fails.
 loadMonaco().then(monaco=>{
   configureJavaScript(monaco);
-  registerHelpers(monaco,()=>Object.keys(files));
   const container=document.createElement('div');container.id='monacoEditor';
   $('editor').after(container);
+  let definitions=null,links=null,helpers=null;
   try {
     codeEditor=createFileEditor(monaco,container,(path,text)=>{files[path]=text;persist();});
     codeEditor.syncFiles(files);
     codeEditor.open(selected,filePreview(files[selected]),isGuide(selected)||isBinaryFile(files[selected]));
+    try {
+      definitions=createDefinitionViewer(monaco,codeEditor.editor,{
+        openProjectFile:openFile,isProjectFile:path=>Object.hasOwn(files,path),
+      });
+      links=registerDefinitionLinks(monaco,definitions);
+    } catch(error) {links?.dispose();definitions?.dispose();links=null;definitions=null;ui.logLine('Definition viewer unavailable: '+String(error));}
+    helpers=registerHelpers(monaco,()=>Object.keys(files),links);
+    codeEditor.editor.onDidDispose(()=>{helpers?.dispose();links?.dispose();definitions?.dispose();});
     $('editor').hidden=true;
-  } catch(error) {container.remove();codeEditor=null;throw error;}
+  } catch(error) {helpers?.dispose();links?.dispose();definitions?.dispose();codeEditor?.dispose();container.remove();codeEditor=null;throw error;}
 }).catch(error=>ui.logLine(String(error)));

@@ -38,7 +38,7 @@ Nativeの演奏処理や公開APIの呼び方、バージョン、リリース�
 
 ## 残る制約と別TODO
 
-- [ ] API宣言のモデルとFILES用openerを用意し、定義ジャンプを本体と同じように利用できるようにする。今回は補完・ホバー・引数ヒント・診断の改善まで。
+- [x] API宣言のモデルとFILES用openerを用意し、定義ジャンプを本体と同じように利用できるようにする。[editor_definitions_01.md](editor_definitions_01.md)で実装。
 - `context`／`pg.context`はユーザー定義の状態なので、既定の値型は`unknown`。中身の補完にはExample 10のようにJSDocで型を指定する。
 - API宣言はグローバル登録のため、import先でもRun用の`play`・`midi`等が候補に出る。import先にそれらが実際に注入されるわけではなく、必要なヘルパーを引数で渡す。
 - Run fileで有効なトップレベル`return`の診断1108を抑制する。この設定はimport先にも適用されるため、import先の不正なトップレベルreturnをエディターで検出できない。実行時には通常のmodule構文制約が適用される。

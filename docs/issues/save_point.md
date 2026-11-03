@@ -20,6 +20,8 @@ AIは機能追加・設計変更の前にこのファイルを読み、関連す
 
 - [editor_types_01.md](editor_types_01.md)：Monacoの型・構文診断、FILESのスコープ、型定義と補完の検証、残るエディターの制約。
 
+- [editor_definitions_01.md](editor_definitions_01.md)：補完・ホバーからAPI型定義と実装コードを読む機能、定義ジャンプとFILESの接続。
+
 このファイルは開発方針の索引であり、アプリの保存機能の仕様ではない。新しい合意事項ができたら、関連メモとこの索引を更新する。
 
 - YM2612 は `midi.enableSoundChip("tetorica-ym2612", {roundRobin: false})` で物理 CH 固定を選択可能。既定は従来の自動割り当て。仕様は midi_sysex_01.md の末尾を参照。

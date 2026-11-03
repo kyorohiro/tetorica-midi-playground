@@ -30,6 +30,8 @@ export function createFileEditor(monaco, container, onChange) {
   const editor = monaco.editor.create(container, {
     model: null, theme: 'vs-dark', automaticLayout: true,
     minimap: {enabled: false}, fontSize: 14, tabSize: 2,
+    // Monaco 0.52's delayed word highlighter leaks a cancellation when switching models.
+    occurrencesHighlight: 'off',
     // Suggest/hover widgets may extend beyond the workspace's clipped edges.
     fixedOverflowWidgets: true,
     scrollBeyondLastLine: false, ariaLabel: 'JavaScript editor',
@@ -39,6 +41,7 @@ export function createFileEditor(monaco, container, onChange) {
     if (current && !current.readOnly) onChange(current.path, editor.getValue());
   });
   return {
+    editor,
     replaceFiles(files) {
       // Detach before disposal so replacement never saves stale text into the new project.
       current = null;
@@ -134,7 +137,7 @@ function relativeImportPath(from, to) {
   return (base.length ? '../'.repeat(base.length) : './') + target.join('/');
 }
 
-export function registerHelpers(monaco, getFilePaths = () => []) {
+export function registerHelpers(monaco, getFilePaths = () => [], definitionLinks = null) {
   return monaco.languages.registerCompletionItemProvider('javascript', {
     triggerCharacters: ['"', "'", '/', '.'],
     provideCompletionItems(model, position) {
@@ -155,7 +158,9 @@ export function registerHelpers(monaco, getFilePaths = () => []) {
       const prefix=model.getLineContent?.(position.lineNumber).slice(0,word.startColumn-1)??'';
       if(/\.\s*$/.test(prefix))return {suggestions:[]};
       const range = {startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn};
-      return {suggestions: Object.entries(helperDocs).map(([name, detail]) => ({label: name, insertText: name, detail, kind: monaco.languages.CompletionItemKind[name==='pg'||name==='context'?'Variable':'Function'], range}))};
+      return {suggestions: Object.entries(helperDocs).map(([name, detail]) => ({label: name, insertText: name, detail,
+        documentation: definitionLinks?.documentation(detail,name) ?? detail,
+        kind: monaco.languages.CompletionItemKind[name==='pg'||name==='context'?'Variable':'Function'], range}))};
     },
   });
 }

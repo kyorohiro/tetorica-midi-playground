@@ -1,17 +1,18 @@
-/** MIDI note number 0–127 or a note name, for example C4. */
+/** MIDI note number 0–127 or a note name, for example C4. [MidiNote](file:///tetorica-definition/MidiNote) */
 type MidiNote = number | string;
-/** Options for a timed note; durations follow the current tempo. */
+/** Options for a timed note; durations follow the current tempo. [MidiPlayOptions](file:///tetorica-definition/MidiPlayOptions) */
 interface MidiPlayOptions {
   /** Duration in beats, greater than 0 and at most 128; default 0.5. Internal-clock notes must last 1–10000 ms. */
   duration?: number;
   /** Note-on velocity, integer 1–127; default 90. */
   velocity?: number;
 }
+/** [MidiNoteOptions](file:///tetorica-definition/MidiNoteOptions) extends [MidiPlayOptions](file:///tetorica-definition/MidiPlayOptions) with a MIDI channel. */
 interface MidiNoteOptions extends MidiPlayOptions {
   /** MIDI channel index 0–15 (CH1–CH16); default CH1 (0). */
   channel?: number;
 }
-/** Existing FM2612 Playground operator fields; omitted values use a quiet default. */
+/** Existing FM2612 Playground operator fields; omitted values use a quiet default. [Ym2612Operator](file:///tetorica-definition/Ym2612Operator) */
 interface Ym2612Operator {
   /** Frequency multiplier register, integer 0–15; default 1. */
   multi?: number;
@@ -38,6 +39,7 @@ interface Ym2612Operator {
   /** Enable amplitude modulation for this operator; default false. */
   am?: boolean;
 }
+/** A YM2612 voice. [Ym2612Preset](file:///tetorica-definition/Ym2612Preset) contains four [Ym2612Operator](file:///tetorica-definition/Ym2612Operator) settings. */
 interface Ym2612Preset {
   /** Optional descriptive name; does not change the transmitted voice. */
   label?: string;
@@ -58,42 +60,46 @@ interface Ym2612Preset {
   pms?: number;
   /** Raw stereo/AMS/PMS register, integer 0–255 with reserved bit 3 clear; default 0xC0. */
   b4?: number;
-  /** Logical OP1–4: array indexes 0–3 or a one-based operator map. */
+  /** Logical OP1–4: array indexes 0–3 or a one-based operator map. [Ym2612Operator](file:///tetorica-definition/Ym2612Operator) */
   operators?: Ym2612Operator[] | {[operator: number]: Ym2612Operator};
 }
+/** A routed MIDI output handle. [MidiOutput](file:///tetorica-definition/MidiOutput) is created by [midi.output](file:///tetorica-definition/midi.output). */
 interface MidiOutput {
-  /** Hold a note on this handle's destination and channel; resolves when the message is sent. */
+  /** Hold a note on this handle's destination and channel; resolves when the message is sent. [MidiOutput.noteOn](file:///tetorica-definition/MidiOutput.noteOn) */
   noteOn(note: MidiNote, options?: {
     /** Note-on velocity, integer 1–127; default 100 for output handles. */
     velocity?: number;
   }): Promise<void>;
-  /** Release a note on this handle's destination and channel. */
+  /** Release a note on this handle's destination and channel. [MidiOutput.noteOff](file:///tetorica-definition/MidiOutput.noteOff) */
   noteOff(note: MidiNote, options?: {
     /** Release velocity, integer 0–127; default 0. */
     velocity?: number;
   }): Promise<void>;
-  /** Pitch bend in -1..1, with 0 at center; semitone range depends on the receiver. */
+  /** Pitch bend in -1..1, with 0 at center; semitone range depends on the receiver. [MidiOutput.pitchBend](file:///tetorica-definition/MidiOutput.pitchBend) */
   pitchBend(value: number): Promise<void>;
-  /** Send a control change; controller and value are integers 0–127. */
+  /** Send a control change; controller and value are integers 0–127. [MidiOutput.cc](file:///tetorica-definition/MidiOutput.cc) */
   cc(controller: number, value: number): Promise<void>;
-  /** Play on this handle's channel. Resolves after the duration; await is optional. */
+  /** Play on this handle's channel. Resolves after the duration; await is optional. [MidiOutput.play](file:///tetorica-definition/MidiOutput.play) uses [MidiNote](file:///tetorica-definition/MidiNote) and [MidiPlayOptions](file:///tetorica-definition/MidiPlayOptions). */
   play(note: MidiNote, options?: MidiPlayOptions): Promise<void>;
-  /** YM2612 only. Next Note On uses this voice; held notes keep their voice. With no channel, updates all 16 channels. Resolves after MIDI submission. */
+  /** YM2612 only. Next Note On uses this voice; held notes keep their voice. With no channel, updates all 16 channels. Resolves after MIDI submission. [MidiOutput.setVoice](file:///tetorica-definition/MidiOutput.setVoice) accepts [Ym2612Preset](file:///tetorica-definition/Ym2612Preset). */
   setVoice(preset: Ym2612Preset): Promise<void>;
+  /** Load TFI/VGI bytes as a YM2612 voice. [MidiOutput.setVoice](file:///tetorica-definition/MidiOutput.setVoice) preserves the routed output's channel selection. */
   setVoice(data: Uint8Array | ArrayBuffer, options: {format: 'tfi' | 'vgi'}): Promise<void>;
-  /** Load a FILES binary voice. Relative paths resolve from the Run file, including calls from imported modules. */
+  /** Load a FILES binary voice. Relative paths resolve from the Run file, including calls from imported modules. [MidiOutput.loadVoice](file:///tetorica-definition/MidiOutput.loadVoice) */
   loadVoice(path: string): Promise<void>;
 }
-/** Opaque identifier assigned in MIDI connections. */
+/** Opaque identifier assigned in MIDI connections. [MidiOutputSlot](file:///tetorica-definition/MidiOutputSlot) */
 interface MidiOutputSlot { readonly __midiOutputSlot: unique symbol; }
+/** A destination ID, port name or assigned [MidiOutputSlot](file:///tetorica-definition/MidiOutputSlot). [MidiDestination](file:///tetorica-definition/MidiDestination) */
 type MidiDestination = 'tetorica-ym2612' | 'tetorica-sega-psg' | (string & {}) | MidiOutputSlot;
 declare const MIDI_OUTPUT_01: MidiOutputSlot;
 declare const MIDI_OUTPUT_02: MidiOutputSlot;
 declare const MIDI_OUTPUT_03: MidiOutputSlot;
 declare const MIDI_OUTPUT_04: MidiOutputSlot;
+/** Create MIDI output handles. [midi](file:///tetorica-definition/midi) */
 declare const midi: {
   enableSoundChip: typeof enableSoundChip;
-  /** Create an output handle; opens on first play/setVoice. YM2612 without channel: play on CH1 with native voice allocation, setVoice on all channels. Other outputs default to CH1. */
+  /** Create an output handle; opens on first play/setVoice. YM2612 without channel: play on CH1 with native voice allocation, setVoice on all channels. Other outputs default to CH1. [midi.output](file:///tetorica-definition/midi.output) takes a [MidiDestination](file:///tetorica-definition/MidiDestination) and returns [MidiOutput](file:///tetorica-definition/MidiOutput). */
   output(destination: MidiDestination, options?: {
     /** MIDI channel index 0–15 (CH1–CH16). Omit for CH1 notes and all-channel YM2612 voice changes. */
     channel?: number;
@@ -105,13 +111,13 @@ interface Ym2612SoundChipOptions {
   /** Default true: allocate voices automatically. False pins CH1–CH6 to physical voices; CH7–CH16 are silent. Changing modes silences held notes. */
   roundRobin?: boolean;
 }
-/** Enable the shared YM2612 rack; repeated calls preserve settings. Allocation options apply only to YM2612. */
+/** Enable the shared YM2612 rack; repeated calls preserve settings. Allocation options apply only to YM2612. [enableSoundChip](file:///tetorica-definition/enableSoundChip) */
 declare function enableSoundChip(chip: Ym2612ChipId, options?: Ym2612SoundChipOptions): Promise<void>;
-/** Enable a shared native sound chip; repeated calls preserve settings. PSG does not accept an allocation mode. */
+/** Enable a shared native sound chip; repeated calls preserve settings. PSG does not accept an allocation mode. [enableSoundChip](file:///tetorica-definition/enableSoundChip) */
 declare function enableSoundChip(chip: SoundChipId, options?: {roundRobin?: never}): Promise<void>;
-/** Play using the MIDI output selected in the UI. */
+/** Play using the MIDI output selected in the UI. [play](file:///tetorica-definition/play) uses [MidiNoteOptions](file:///tetorica-definition/MidiNoteOptions). */
 declare function play(note: MidiNote, options?: MidiNoteOptions): Promise<void>;
-/** Use context.playOutput for loop ownership in imported or explicit callbacks. */
+/** Use context.playOutput for loop ownership in imported or explicit callbacks. [playOutput](file:///tetorica-definition/playOutput) takes [MidiOutput](file:///tetorica-definition/MidiOutput) and [MidiPlayOptions](file:///tetorica-definition/MidiPlayOptions). */
 declare function playOutput(output: MidiOutput, note: MidiNote, options?: MidiPlayOptions): Promise<void>;
 /** MIDI channel indices are 0–15; default is CH1 (0). */
 interface MidiChannelOptions {
@@ -166,7 +172,7 @@ interface PlaygroundKeyEvent {
 }
 declare function onKeyboardPressKey(name: string, callback: (event: PlaygroundKeyEvent) => void | Promise<void>): void;
 declare function onKeyboardReleaseKey(name: string, callback: (event: PlaygroundKeyEvent) => void | Promise<void>): void;
-/** Helpers passed to liveLoop. The parameter can be named context or destructured. */
+/** Helpers passed to liveLoop. The parameter can be named context or destructured. [TetoricaContext](file:///tetorica-definition/TetoricaContext) */
 interface TetoricaContext {
   CH1: typeof CH1;
   CH2: typeof CH2;
@@ -199,13 +205,13 @@ interface TetoricaContext {
   MIDI_OUTPUT_01: MidiOutputSlot; MIDI_OUTPUT_02: MidiOutputSlot; MIDI_OUTPUT_03: MidiOutputSlot; MIDI_OUTPUT_04: MidiOutputSlot;
   onKeyboardPressKey: typeof onKeyboardPressKey; onKeyboardReleaseKey: typeof onKeyboardReleaseKey;
 }
-/** Named repeating callback. Use context helpers to retain cancellation across awaits. */
+/** Named repeating callback. Use context helpers to retain cancellation across awaits. [liveLoop](file:///tetorica-definition/liveLoop) receives [TetoricaContext](file:///tetorica-definition/TetoricaContext). */
 declare function liveLoop(name: string, callback: (context: TetoricaContext) => void | Promise<void>): void;
 declare const console: {log: typeof log; warn: typeof log; error: typeof log};
 /** User-defined shared state. Apply preserves this object; Run creates a new one. */
 type PlaygroundContext = Record<string, unknown>;
 declare const context: PlaygroundContext;
-/** Browse the MIDI Playground API through pg. */
+/** Browse the MIDI Playground API through pg. [PlaygroundAPI](file:///tetorica-definition/PlaygroundAPI) */
 interface PlaygroundAPI extends Omit<TetoricaContext, 'pg'> {
   liveLoop: typeof liveLoop;
 }

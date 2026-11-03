@@ -178,6 +178,10 @@ JavaScript syntax and type diagnostics are enabled. For example, `play("C4", {ve
 
 Completion uses ECMAScript built-ins and MIDI helpers; browser Window/DOM globals such as screenLeft are excluded. Local variables and standard JavaScript methods remain available.
 
+The completion details and hover include links to API types such as **MidiOutput** and **MidiPlayOptions**. Expand a completion with **Read More** (or Ctrl+Space while suggestions are open), then click a type link to read its declaration. **F12 / Go to Definition** also opens API declarations and follows functions in FILES. If several definitions are offered, choose the desired one.
+
+API declarations open in a separate read-only viewer. Follow related types with links or F12; **View implementation** opens the JavaScript code that implements the selected declaration. You can follow imports inside that code, use **Back** after opening a link or implementation, then **Close** to return to editing. Internal source files are for reading and are not added to FILES or the exported project. Your own FILES definitions open in the normal editor.
+
 ## External beat clock (trial)
 
 Connect a Clock input in MIDI settings, select **External MIDI (trial)**, then press Run before sending MIDI Start or Continue. Scripts wait for that message. `beat` and `nextBeat` follow incoming pulses (24 per beat); `setBpm` does not change these waits. External play duration follows Clock pulses; see the timing limits below.

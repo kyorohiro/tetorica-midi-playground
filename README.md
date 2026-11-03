@@ -18,6 +18,8 @@ under `ui/shared`; the original Browser application is unchanged. Monaco is not
 loaded from a CDN: it is bundled locally, with a textarea fallback. The editor
 checks JavaScript types and syntax, isolates each FILES script's scope, and
 provides MIDI API/JSDoc completion, hover and argument hints across relative imports.
+Links in API completion details and hover open read-only type declarations and
+JavaScript implementations; F12 also follows definitions in FILES.
 
 Connect an output in **MIDI settings**, select `/index.js` in **Run file**, and press **Run**.
 The viewed file and Run file are independent. Select `/examples/05_live_loop.js` in Run file to try a loop. `examples/05_live_loop.js` repeats notes until **Stop**. GarageBand needs no Clock

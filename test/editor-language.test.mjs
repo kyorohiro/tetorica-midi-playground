@@ -70,6 +70,27 @@ test('JSDoc types and hover come from the shipped API declarations',async()=>{
  assert.deepEqual(await worker.getSemanticDiagnostics('file:///tetorica-api.d.ts'),[]);
  assert.equal(apiTypes,await readFile(new URL('../ui/playground-api.d.ts',import.meta.url),'utf8'));
 });
+test('actual TypeScript completion details retain links to API types and members',async()=>{
+ // These are the details Monaco's built-in SuggestAdapter displays, before insertion.
+ const cases=[
+  ['midi.out/*here*/','output',['midi.output','MidiDestination','MidiOutput']],
+  ['const lead=midi.output("tetorica-ym2612");lead.pl/*here*/','play',['MidiOutput.play','MidiNote','MidiPlayOptions']],
+  ['const lead=midi.output("tetorica-ym2612");lead.setVo/*here*/','setVoice',['MidiOutput.setVoice','Ym2612Preset']],
+  ['/** @type {MidiOut/*here*/} */ let output;','MidiOutput',['MidiOutput','midi.output']],
+  ['/** @type {MidiPlayOpt/*here*/} */ let options;','MidiPlayOptions',['MidiPlayOptions']],
+  ['/** @type {Ym2612Pre/*here*/} */ let preset;','Ym2612Preset',['Ym2612Preset','Ym2612Operator']],
+  ['pla/*here*/','play',['play','MidiNoteOptions']],
+ ];
+ for(const [marked,name,symbols] of cases){
+  const position=marked.indexOf('/*here*/'),worker=language(marked.replace('/*here*/',''));
+  const result=await worker.getCompletionsAtPosition('file:///index.js',position);
+  assert.ok(result?.entries.some(entry=>entry.name===name),`${name}: completion missing`);
+  const details=await worker.getCompletionEntryDetails('file:///index.js',position,name);
+  const documentation=details.documentation.map(part=>part.text).join('');
+  for(const symbol of symbols)assert.ok(documentation.includes(`[${symbol}](file:///tetorica-definition/${symbol})`),`${name}: link to ${symbol} missing`);
+  assert.ok(details.displayParts.length,`${name}: signature lost`);
+ }
+});
 test('relative imports preserve JSDoc typedef, parameters and return types',async()=>{
  const code='const {makeVoice}=await import("./lib/voice.js"); const voice=makeVoice(midi.output("tetorica-ym2612"));voice.';
  const worker=language(code,{'file:///lib/voice.js':`
