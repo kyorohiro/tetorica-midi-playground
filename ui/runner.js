@@ -10,6 +10,8 @@ import {prepareModules} from './modules.js';
 import {createKeyboardHandlers} from './keyboard.js';
 import {createLoops} from './loops.js';
 import {createMidiHelpers,noteNumber} from './runtime.js';
+import {createLivePrepare} from './live-prepare.js';
+import {createTween} from './tween.js';
 import {installPlaygroundExecutionGuards} from './shared/playground_execution.js';
 installPlaygroundExecutionGuards(globalThis);
 let sequence=0,evaluate=null,evaluating=false;
@@ -36,6 +38,11 @@ onmessage=async ({data})=>{
   let logCount=0;
   const log=(...args)=>logCount++<1000 && postMessage({type:'log',text:args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')});
   const api=createMidiHelpers({send,sleep,log,bpm:data.bpm});
+  const tweenFor=check=>external?createTween({
+    seconds:()=>performance.now()/1000,beats:()=>clockReceiver.state?.beat??0,sleep,
+    check:()=>{external.check();check?.();},
+  }):api.createTween(check);
+  api.tween=tweenFor();
   const primitives=(check=()=>{},owner)=>createMidiPrimitives({check,onError:e=>postMessage({type:'error',text:String(e)}),transmit:payload=>request('midi',{...payload,...(owner===undefined?{}:{owner})})});
   Object.assign(api,channels,primitives());
   if(external){
@@ -50,6 +57,7 @@ onmessage=async ({data})=>{
   let voiceFiles=data.files||{},voicePath=data.path||'/index.js';
   const outputs=createOutputApi({readVoice:path=>readVoiceFile(voiceFiles,path,voicePath),mappings:data.outputMappings,request,play:(...args)=>api.play(...args),send,onError:e=>postMessage({type:'error',text:String(e)})});
   Object.assign(api,{context:{},...outputSlots,midi:outputs.midi,enableSoundChip:outputs.enableSoundChip,playOutput:outputs.playOutput});
+  api.livePrepare=createLivePrepare({context:api.context,midi:api.midi,enableSoundChip:api.enableSoundChip,log});
   keyboard=createKeyboardHandlers(e=>postMessage({type:'error',text:String(e)}));
   Object.assign(api,{onKeyboardPressKey:keyboard.onKeyboardPressKey,onKeyboardReleaseKey:keyboard.onKeyboardReleaseKey});
   const loops=createLoops({sleep,onError:e=>postMessage({type:'error',text:String(e)}),onStop:owner=>postMessage({type:'release',owner}),createApi:(check,owner)=>{
@@ -57,6 +65,8 @@ onmessage=async ({data})=>{
     let slot=0;const cycles=new Map();
     const helpers={...channels,...api,...primitives(check,owner),playOutput:outputs.scoped(check,owner)};
     Object.assign(helpers,external?{beat:count=>external.beat(count,check),nextBeat:()=>external.nextBeat(check)}:api.createLoopTiming(check));
+    helpers.tween=tweenFor(check);
+    helpers.livePrepare=async(name,factory)=>{check();const result=await api.livePrepare(name,factory);check();return result;};
     helpers.play=async(note,options)=>{
       check();
       await api.play(note,options,payload=>{check();return send({...payload,owner});});

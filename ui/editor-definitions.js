@@ -7,6 +7,7 @@ const runtimeFiles = new Set([
   'runtime.js', 'loops.js', 'midi-primitives.js', 'keyboard.js', 'runner.js',
   'midi-output.js', 'output-mappings.js', 'midi-channels.js', 'ym2612-voice.js',
   'project-assets.js', 'loop-context.js', 'clock-wait.js', 'clock-receiver.js',
+  'live-prepare.js', 'tween.js',
   'external-clock.js', 'modules.js', 'shared/tfi.js', 'shared/vgi.js', 'shared/pitch.js',
   'shared/playground_execution.js', 'vendor/acorn.mjs', 'vendor/module-lexer.js',
 ]);
@@ -103,12 +104,16 @@ export function definitionSource(text, position) {
   if (['MidiOutputSlot', 'MidiDestination'].includes(owner)) return {file: 'output-mappings.js', symbol: owner === 'MidiOutputSlot' ? 'outputSlots' : 'resolveOutput'};
   if (['Ym2612ChipId', 'SoundChipId', 'Ym2612SoundChipOptions'].includes(owner)) return {file: 'midi-output.js', symbol: 'enableSoundChip'};
   if (owner === 'PlaygroundKeyEvent') return {file: 'keyboard.js', symbol: 'keyData'};
+  if (owner === 'LivePrepareContext') return {file: 'live-prepare.js', symbol: 'createLivePrepare'};
+  if (owner === 'TweenDuration') return {file: 'tween.js', symbol: 'createTween'};
   if (owner === 'MidiNote') return {file: 'runtime.js', symbol: 'noteNumber'};
   if (['PlaygroundAPI', 'TetoricaContext', 'PlaygroundContext'].includes(owner)) return {file: 'runner.js', symbol: 'api'};
   return sourceForGlobal(symbol);
 }
 
 function sourceForGlobal(symbol) {
+  if (symbol === 'livePrepare') return {file: 'live-prepare.js', symbol: 'createLivePrepare'};
+  if (symbol === 'tween') return {file: 'tween.js', symbol: 'createTween'};
   if (['noteOn', 'noteOff', 'cc', 'programChange', 'pitchBend', 'channelPressure', 'polyPressure', 'send'].includes(symbol)) return {file: 'midi-primitives.js', symbol};
   if (['play', 'beat', 'nextBeat', 'setBpm', 'choose', 'cycle', 'scale', 'chord', 'rand', 'rrange', 'randInt', 'lerp', 'noteLerp'].includes(symbol)) return {file: 'runtime.js', symbol};
   if (['liveLoop', 'stopLoop', 'stopAllLoops'].includes(symbol)) return {file: 'loops.js', symbol};

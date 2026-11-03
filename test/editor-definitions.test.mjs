@@ -13,7 +13,7 @@ function selectedText(text, range) {
 }
 
 test('public types, globals and qualified members select their actual declaration tokens', () => {
-  for (const name of ['MidiOutput', 'MidiPlayOptions', 'Ym2612Preset', 'midi', 'play', 'CH16', 'MIDI_OUTPUT_01']) {
+  for (const name of ['MidiOutput', 'MidiPlayOptions', 'Ym2612Preset', 'midi', 'play', 'CH16', 'MIDI_OUTPUT_01','livePrepare','LivePrepareContext','tween','TweenDuration']) {
     assert.equal(selectedText(apiTypes, declarationTarget(name)), name);
   }
   for (const name of ['MidiOutput.play', 'MidiOutput.setVoice', 'MidiOutput.loadVoice', 'MidiPlayOptions.duration', 'midi.output', 'midi.enableSoundChip', 'Ym2612Preset.operators', 'TetoricaContext.noteOff', 'TetoricaContext.playOutput']) {
@@ -56,6 +56,12 @@ test('type declarations lead to the functions that implement the MIDI API', asyn
     ['onKeyboardPressKey', 'keyboard.js', 'onKeyboardPressKey'],
     ['MIDI_OUTPUT_04', 'output-mappings.js', 'outputSlots'],
     ['CH1', 'midi-channels.js', 'channels'],
+    ['livePrepare','live-prepare.js','createLivePrepare'],
+    ['LivePrepareContext','live-prepare.js','createLivePrepare'],
+    ['PlaygroundAPI.livePrepare','live-prepare.js','createLivePrepare'],
+    ['tween','tween.js','createTween'],
+    ['TweenDuration','tween.js','createTween'],
+    ['TetoricaContext.tween','tween.js','createTween'],
   ];
   for (const [name, file, symbol] of cases) {
     assert.deepEqual(definitionSource(apiTypes, declarationTarget(name)), {file, symbol}, name);
@@ -96,6 +102,8 @@ test('runtime sources are contained in a fixed allowlist separate from project f
   assert.equal(runtimeSourceFile('file:///tetorica-runtime/midi-output.js'), 'midi-output.js');
   assert.equal(runtimeSourceFile('file:///tetorica-runtime/shared/vgi.js?v=1#anchor'), 'shared/vgi.js');
   assert.equal(runtimeSourceFile('file:///tetorica-runtime/vendor/acorn.mjs'), 'vendor/acorn.mjs');
+  assert.equal(runtimeSourceFile('file:///tetorica-runtime/live-prepare.js'),'live-prepare.js');
+  assert.equal(runtimeSourceFile('file:///tetorica-runtime/tween.js'),'tween.js');
   for (const path of [
     'file:///index.js', 'file:///tetorica-api.d.ts', 'file:///tetorica-runtime/app.js',
     'file:///tetorica-runtime/../../app.js', 'file:///tetorica-runtime/%2e%2e/app.js',

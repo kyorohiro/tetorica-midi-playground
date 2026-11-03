@@ -47,7 +47,7 @@ test('JavaScript checks isolated FILES modules without DOM libraries',()=>{
 function importCompletion(source, path='/index.js', paths=['/index.js','/lib/phrase.js','/lib/notes.mjs','/README.md']) {
  let provider;
  const files=[...paths];
- registerHelpers({languages:{CompletionItemKind:{File:17,Function:1,Variable:4},registerCompletionItemProvider(_,value){provider=value;}}},()=>files);
+ registerHelpers({languages:{CompletionItemKind:{File:17,Function:1,Variable:4,Value:12},registerCompletionItemProvider(_,value){provider=value;}}},()=>files);
  const offset=source.indexOf('|');
  const text=source.replace('|','');
  const lines=text.slice(0,offset).split('\n');
@@ -103,4 +103,76 @@ test('project replacement drops old models and undo state before opening importe
  adapter.open('/index.js','imported',false);
  assert.equal(active.text,'imported');
  assert.deepEqual(changes,[['/index.js','imported']]);
+});
+
+test('stopLoop completes global and pg liveLoop names once and replaces closed or unfinished quotes',()=>{
+ for(const call of ['stopLoop','pg.stopLoop'])for(const suffix of ['")','']){
+  const setup=importCompletion(`liveLoop('bass',()=>{});pg.liveLoop('lead',()=>{});liveLoop('bass',()=>{});\n${call}("ba|ss${suffix}`);
+  const items=setup.result().suggestions;
+  assert.deepEqual(items.map(item=>item.label),['bass','lead']);
+  assert.ok(items.every(item=>item.kind===12));
+  const selected=items.find(item=>item.label==='lead'),line=setup.text.split('\n')[1];
+  const replaced=line.slice(0,selected.range.startColumn-1)+selected.insertText+line.slice(selected.range.endColumn-1);
+  assert.equal(replaced,`${call}("lead${suffix}`);
+ }
+});
+
+test('stopLoop ignores comments, strings, regexes and unrelated member calls',()=>{
+ const definitions=`// liveLoop('comment',()=>{});\n/* pg.liveLoop('block',()=>{}); */\nconst text="liveLoop('string',()=>{})";\nconst regex=/liveLoop('regex')/;\nobj.liveLoop('member',()=>{});obj.pg.liveLoop('nested',()=>{});\npg.liveLoop('real',()=>{});`;
+ assert.deepEqual(importCompletion(definitions+'\nstopLoop("|")').result().suggestions.map(item=>item.label),['real']);
+ for(const expression of ['// stopLoop("|")','/* stopLoop("|") */','const text=`stopLoop("|")`;','obj.stopLoop("|")','obj.pg.stopLoop("|")','log("|")','stopLoop("done");const other="|";']){
+  assert.ok(!importCompletion(definitions+'\n'+expression).result().suggestions.some(item=>item.kind===12),expression);
+ }
+});
+
+test('stopLoop completion preserves escaped and quoted names as valid JavaScript strings',()=>{
+ const names=[`drum's`, 'say "hi"', 'folder\\lead', 'line\nbreak'];
+ const definitions=names.map(name=>`liveLoop(${JSON.stringify(name)},()=>{});`).join('\n');
+ for(const quote of ['"',"'"])for(const prefix of ['',quote==='"'?`drum's`:"drum\\'s",quote==='"'?'say \\"hi':'say "hi', 'folder\\\\le', 'folder\\']){
+  const setup=importCompletion(definitions+`\nstopLoop(${quote}${prefix}|tail${quote})`);
+  const suggestions=setup.result().suggestions;
+  assert.deepEqual(suggestions.map(item=>item.label).sort(),[...names].sort(),`${quote}${prefix}`);
+  for(const item of suggestions){
+   const line=setup.text.split('\n').at(-1);
+   const expression=line.slice(0,item.range.startColumn-1)+item.insertText+line.slice(item.range.endColumn-1);
+   let received;new Function('stopLoop',expression)(name=>received=name);
+   assert.equal(received,item.label);
+  }
+ }
+});
+
+test('reconcileFiles preserves unchanged models, updates text silently and disposes removed models',()=>{
+ let active,callback;const changes=[],models=[];let restored;
+ const editor={onDidChangeModelContent(fn){callback=fn;return {dispose(){}};},setModel(model){active=model;callback();},getValue:()=>active?.text,
+  saveViewState:()=>({cursor:active?.uri.path==='/lib/old.js'?77:42}),restoreViewState:value=>restored=value,updateOptions(){},dispose(){}};
+ const monaco={Uri:{from:value=>value},editor:{create:()=>editor,createModel(text,language,uri){
+  const model={text,language,uri,undo:[text],getValue(){return this.text;},setValue(value){this.text=value;this.undo=[];callback();},dispose(){this.disposed=true;}};
+  models.push(model);return model;
+ }}};
+ const adapter=createFileEditor(monaco,{},(...args)=>changes.push(args));
+ adapter.syncFiles({'/index.js':'unchanged','/lib/old.js':'old','/removed.js':'remove'});
+ const [index,old,removed]=models;
+ adapter.open('/index.js','unchanged',false);changes.length=0;
+ adapter.reconcileFiles({'/index.js':'unchanged','/lib/old.js':'changed'});
+ assert.equal(models[0],index);assert.deepEqual(index.undo,['unchanged']);assert.equal(index.disposed,undefined);
+ assert.equal(old.text,'changed');assert.deepEqual(old.undo,[]);assert.equal(old.disposed,undefined);assert.equal(removed.disposed,true);
+ assert.deepEqual(changes,[]);
+ adapter.open('/lib/old.js','changed',false);changes.length=0;
+ adapter.open('/index.js','unchanged',false);assert.deepEqual(restored,{cursor:42});
+ adapter.open('/lib/old.js','changed',false);changes.length=0;
+ adapter.reconcileFiles({'/index.js':'unchanged','/renamed/old.js':'changed'},{from:'/lib',to:'/renamed'});
+ assert.equal(old.disposed,true);assert.equal(active,null);assert.deepEqual(changes,[]);
+ adapter.open('/renamed/old.js','changed',false);
+ assert.deepEqual(restored,{cursor:77});assert.equal(active.uri.path,'/renamed/old.js');
+ adapter.dispose();assert.ok(models.every(model=>model.disposed));
+});
+
+test('syncFiles exposes only script text and excludes binary files and Git internals',()=>{
+ const models=[];
+ const monaco={Uri:{from:value=>value},editor:{create:()=>({onDidChangeModelContent:()=>({dispose(){}}),dispose(){}}),
+  createModel(text,language,uri){const model={text,language,uri,dispose(){}};models.push(model);return model;}}};
+ const adapter=createFileEditor(monaco,{},()=>{});
+ adapter.syncFiles({'/index.js':'code','/lib/a.mjs':'module','/binary.js':{kind:'binary',base64:'AA=='},'/.git/refs/heads/name.js':'ref','/lib/.GIT/config.js':'ref','/README.md':'guide'});
+ assert.deepEqual(models.map(model=>model.uri.path),['/index.js','/lib/a.mjs']);
+ adapter.dispose();
 });

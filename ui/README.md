@@ -256,7 +256,7 @@ const bass = midi.output(MIDI_OUTPUT_01, {channel: CH2});
 
 Assignments are saved locally. Changing one stops playback; press Run again. Each Run takes a snapshot, also used by Apply. Unused slots may remain unassigned. Using an unassigned slot is an error when creating its handle. External devices are saved by ID and name; missing/renamed devices require reassignment, with no name-based fallback. Device availability is checked again on first play. Internal destinations still require `await enableSoundChip(...)` or manual Enable.
 
-`/examples/02_assigned_outputs.js` runs with internal destinations by default. Its comments explain how to switch to assigned slots after configuring them in MIDI connections. Channel defaults to 1. Keyboard and global `play()` still use their existing output selector.
+`/examples/02_assigned_outputs.js` runs with internal destinations by default. Its comments explain how to switch to assigned slots after configuring them in MIDI connections. Channel defaults to CH1 (index 0). Keyboard and global `play()` still use their existing output selector.
 
 ## Completion and JSDoc
 
@@ -300,7 +300,7 @@ Choose the example as Run file and press **Run** to initialize the built-in YM26
 
 ## Low-level MIDI API
 
-These functions send to the MIDI output selected in MIDI settings, like global `play()`. They are also available through `pg` and loop callback helpers. Output handles returned by `midi.output()` still expose `play()` only.
+These functions send to the MIDI output selected in MIDI settings, like global `play()`. They are also available through `pg` and loop callback helpers. Output handles returned by `midi.output()` expose the same MIDI controls for their own destination and channel.
 
 | API | Values and defaults |
 | --- | --- |
@@ -342,7 +342,7 @@ Internal support:
 - CC121 resets bend, modulation, pressure, expression and pedals, preserving channel volume/pan.
 - CC1, channelPressure and polyPressure: 5 Hz vibrato, up to ±0.5 semitone; the greatest of those three values sets depth. Poly pressure affects the addressed note only. PSG CH10 noise has fixed pitch, so bend/vibrato do not affect it.
 - Internal Stop/Panic clears notes/controllers, preserving FM patches. FM patch edits still apply only on the next Note On.
-- Program Change is accepted by the transport but has no internal preset mapping yet; the current channel patch remains in use. SysEx and unlisted CCs have no internal implementation.
+- Program Change is accepted by the transport but has no internal preset mapping yet; the current channel patch remains in use. YM2612 voice SysEx is supported; other SysEx and unlisted CCs have no internal implementation.
 
 
 ## YM2612 voice transfer
@@ -365,3 +365,44 @@ Existing custom scripts using numeric channels must subtract 1 or replace their 
 ## Fixed YM2612 channels
 
 Use `await midi.enableSoundChip("tetorica-ym2612", {roundRobin: false})` before playing to map MIDI CH1–CH6 to physical voices 1–6. Each voice is monophonic; CH7–CH16 are silent. The existing global `enableSoundChip("ym2612", options)` also accepts this option. Omitted/true keeps automatic allocation. Changing modes silences YM2612 notes; reapplying the same mode does not. This does not enable CH3 special mode or change PSG/external MIDI.
+
+## Organize FILES and local Git
+
+Use **FILES → + / Folder+** to create files and folders. The **⋯** button acts on the open file; right-click a file or folder for rename/move, copy, delete, or **Copy relative path**. Enter a project path such as `/parts/bass.js`. Drag a file or folder onto a directory to move it; hold Ctrl or Option to copy. Import accepts multiple JS, text/JSON, or TFI/VGI files into the current directory. Existing paths are not overwritten. Structural changes stop playback.
+
+Run file and the viewed file follow moves. Unchanged files retain editor Undo; moved files retain cursor/view position but receive a new model and Undo history. Relative import and `loadVoice()` strings in source are not rewritten when files move. Bundled guides and `.git` are protected. At least one runnable JavaScript file must remain. Deleting or moving bundled examples persists across restarts.
+
+**Menu → Git…** opens local history for this project: initialize a repository, inspect status/diffs, stage individual files or all changes, enter an author and commit message, commit, and view history or create a branch at the current commit. Branch creation does not switch branches. Remote operations and branch switching are not available yet. This repository lives inside virtual FILES; it does not operate on your Mac's Git checkout.
+
+Git history, binary voices, and empty folders are included in autosave and project cassette export/import. `.git` is hidden in FILES and is not sent to performance scripts. Git validates the filesystem's 16 MiB / 1024-file budget before publishing. Export also checks manifest size and ZIP overhead against the cassette limits. Git metadata is not a backup outside the app: export your cassette to keep a separate copy. New Project replaces the current history along with its files. Git operations never execute imported code.
+
+## Initialize once with livePrepare
+
+```js
+const instruments = await livePrepare("instruments", async ({midi, enableSoundChip}) => {
+  await enableSoundChip("ym2612");
+  return {lead: midi.output("tetorica-ym2612", {})};
+});
+await instruments.lead.play("C4", {duration: 0.5});
+```
+
+The result is inferred, so `instruments.lead.` completes as `MidiOutput` without a `context` cast. Calls with the same name share pending initialization and the successful result across Apply, including a result of `undefined`. **Run** starts a new cache; **Stop** ends it. A caught failure can be retried. Changing the factory and pressing Apply keeps the old result: use Run or a different name to reinitialize. Keep counters and other changing state in `context`.
+
+Also available as `pg.livePrepare()` and in loop helpers. Use `ctx.playOutput(preparedOutput, note, options)` for a prepared output inside a loop, as in Example 16, to keep note ownership and cancellation attached to that loop. Stopping one loop cancels its waiter; shared initialization can still finish for other loops. See `examples/16_live_prepare.js`.
+
+## Animate MIDI controls with tween
+
+```js
+liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
+  await noteOn("C4");
+  await tween({beats: 4}, async progress => {
+    await pitchBend(lerp(0, 0.5, progress));
+  });
+  await noteOff("C4");
+  await beat(1);
+});
+```
+
+`tween({seconds: 1}, callback)` measures elapsed time; `{beats: 4}` follows internal BPM changes or actual external MIDI Clock pulses. Numeric duration means seconds. Positive durations call back with 0, increasing progress, and exactly 1; zero calls only 1. Async callbacks are awaited in order. This is timer-driven MIDI control, not audio-rate automation. `lerp()` maps progress to the desired value.
+
+Use loop-local `tween` / `ctx.tween` / `ctx.pg.tween` to cancel on `stopLoop()` or same-name Apply replacement, without forcing a final value. An already started async callback must finish before cancellation is checked again. Stop ends the whole Worker. See `examples/17_tween.js`; `stopLoop("…")` completes literal loop names from `liveLoop()` / `pg.liveLoop()` calls in the editing file.

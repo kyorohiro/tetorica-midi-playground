@@ -22,7 +22,7 @@ AIは機能追加・設計変更の前にこのファイルを読み、関連す
 
 - [editor_definitions_01.md](editor_definitions_01.md)：補完・ホバーからAPI型定義と実装コードを読む機能、定義ジャンプとFILESの接続。
 
-- [todo003.md](todo003.md)：FILES整理、Git、stopLoop補完、tween。Sync／Revertは保留。livePrepareとcontextの役割・導入判断。
+- [todo003.md](todo003.md)：FILES整理とローカルGit、stopLoop補完、tween／livePrepareの実装・検証。Git remoteは後続、Sync／Revertは保留。
 
 このファイルは開発方針の索引であり、アプリの保存機能の仕様ではない。新しい合意事項ができたら、関連メモとこの索引を更新する。
 

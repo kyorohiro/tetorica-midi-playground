@@ -339,7 +339,7 @@ await send(new Uint8Array([0xB0, 1, 0]));
 - CC121は音量・パンを保ち、ベンド・modulation・pressure・expression・ペダルをリセットします。
 - CC1・channelPressure・polyPressureは5 Hzのビブラートに割り当て、最大±0.5半音。3つの値の最大値を深さに使います。polyPressureは指定音だけに適用します。PSG CH10のノイズは固定ピッチなのでベンド・ビブラートの対象外です。
 - 内蔵のStop/Panicはノートとコントローラーをリセットします。FM音色設定は保持し、音色編集は従来どおり次のNote Onから反映します。
-- Program Changeの送信はできますが、内蔵の音色番号は未割当のため現在のCH音色を維持します。SysEx・記載のないCCの内蔵受信処理は未実装です。
+- Program Changeの送信はできますが、内蔵の音色番号は未割当のため現在のCH音色を維持します。YM2612音色転送のSysExには対応し、それ以外のSysEx・記載のないCCの内蔵受信処理は未実装です。
 
 
 ## コードからYM2612の音色を指定する
@@ -392,3 +392,44 @@ await lead.play("C4", {duration: 1, velocity: 100});
 - PSG、外部 MIDI 出力にはこの設定を適用しない。CH3 special や DAC は追加対応ではない。
 - 通常の `noteOn` / `noteOff` / CC / Pitch Bend / `setVoice` をそのまま使う。
   チップへ直接レジスタを書き込む API との併用を安全にする予約機能ではない。
+
+## FILES整理とローカルGit
+
+**FILES → + / Folder+**でファイル・フォルダーを作成できます。**⋯**は開いているファイルの操作、右クリックは対象ファイル／フォルダーの名前変更・移動・コピー・削除・相対パスコピーです。`/parts/bass.js`のようなプロジェクト内パスを入力します。フォルダーへドラッグすると移動、Ctrl／Optionを押しながらならコピーです。ImportはJS・テキスト／JSON・TFI／VGIの複数ファイルを現在のフォルダーへ取り込みます。同名パスは上書きしません。構造変更時は演奏を停止します。
+
+移動するとRun fileと表示ファイルも追従します。無変更ファイルのUndoは保持し、移動したファイルはカーソル・表示位置を引き継ぎますが、モデルとUndo履歴は新しくなります。コード内の相対importや`loadVoice()`の文字列は自動変更しないため、移動後に見直してください。同梱ガイドと`.git`は保護され、実行可能なJSを最低1つ残す必要があります。削除・移動した同梱exampleは再起動しても復活しません。
+
+**Menu → Git…**では、このプロジェクトのローカルGitを操作できます。Initialize → 差分確認 → Stage → 作者名・メール・messageを入力 → Commitの順で保存し、Historyで履歴を読めます。ファイルごとのStage／Diffもあります。Branchは現在のcommitを指すブランチの作成のみで、切り替え・remote操作は後続対応です。対象は仮想FILESで、Mac上の実リポジトリを操作する機能ではありません。
+
+Git履歴・バイナリ音色・空フォルダーは自動保存とカセットのExport／Importに含まれます。`.git`はFILESに表示せず、演奏Workerにも渡しません。Git更新前にファイル本体の16 MiB／1024ファイル上限を検証します。Export時にはメタデータ・ZIPの追加分も含めた上限を確認します。アプリ外にもバックアップを残すにはExport projectを使ってください。New Projectではファイルと一緒にGit履歴も置き換わります。Git操作だけでコードが実行されることはありません。
+
+## livePrepareで初期化結果を再利用
+
+```js
+const instruments = await livePrepare("instruments", async ({midi, enableSoundChip}) => {
+  await enableSoundChip("ym2612");
+  return {lead: midi.output("tetorica-ym2612", {})};
+});
+await instruments.lead.play("C4", {duration: 0.5});
+```
+
+戻り値の型が推論されるので、`context`への型キャストなしで`instruments.lead.`をMidiOutputとして補完できます。同じ名前は実行中の初期化Promiseと成功結果をApply間で共有し、成功値`undefined`も保存します。**Run**で作り直し、**Stop**で終了します。catchした失敗は再試行できます。初期化callbackを書き換えてApplyしても以前の結果を使うため、再初期化はRunか名前変更で行ってください。演奏中に変わるカウンター等は引き続き`context`へ置けます。
+
+`pg.livePrepare()`やループ用ヘルパーからも呼べます。準備したoutputをループ内で演奏する場合は、Example 16のように`ctx.playOutput(output, note, options)`を使い、ノートの所有権と停止をそのループへ結び付けてください。あるループを止めると、そのループの待機は再開しません。共有の初期化処理自体は他のループのために完了できます。`examples/16_live_prepare.js`で試せます。
+
+## tweenでMIDIコントロールを変化させる
+
+```js
+liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
+  await noteOn("C4");
+  await tween({beats: 4}, async progress => {
+    await pitchBend(lerp(0, 0.5, progress));
+  });
+  await noteOff("C4");
+  await beat(1);
+});
+```
+
+`tween({seconds: 1}, callback)`は経過秒数、`{beats: 4}`は内部BPMの変更または実際の外部MIDI Clockに追従します。数値だけの指定は秒です。正の長さなら0→増加する進捗→1を渡し、0秒／0拍なら1だけを一度呼びます。async callbackは順番に待つため重複実行しません。音声サンプル単位の処理ではなく、タイマーでMIDIを変える補助機能です。`lerp()`で進捗を目的の値へ変換できます。
+
+ループ内ではループ用`tween`／`ctx.tween`／`ctx.pg.tween`を使い、`stopLoop()`・同名Apply置換で停止できます。停止時に最終値1を強制しません。すでに実行を始めたasync callbackは完了後に再び停止を確認します。StopはWorker全体を終了します。`examples/17_tween.js`で試してください。`stopLoop("…")`の名前候補は、編集中ファイル内の`liveLoop()`／`pg.liveLoop()`の文字列名から補完します。

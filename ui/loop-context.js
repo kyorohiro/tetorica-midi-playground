@@ -12,20 +12,21 @@ export function bindLoopContext(source) {
     for(const v of Object.values(n))if(Array.isArray(v))v.forEach(findOutputs);else if(v&&typeof v==='object')findOutputs(v);
   }
   findOutputs(ast);
-  const names=['play','beat','nextBeat','cycle','playOutput','pg','noteOn','noteOff','cc','programChange','pitchBend','channelPressure','polyPressure','send'];
+  const names=['play','beat','nextBeat','tween','livePrepare','cycle','playOutput','pg','noteOn','noteOff','cc','programChange','pitchBend','channelPressure','polyPressure','send'];
   function walk(node){
     if(!node||typeof node!=='object')return;
     if(isLiveLoop(node)){
       const fn=node.arguments[1];
       if(fn&&['ArrowFunctionExpression','FunctionExpression'].includes(fn.type)&&fn.params.length===0){
-        // Inserting lexical bindings in the body preserves closure variables and comments.
+        // Bind the empty parameter list, preserving closures, comments and expression bodies.
+        const declared=new Set();
         if(fn.body.type==='BlockStatement') {
-          const declared=new Set();
           function pattern(n){if(!n)return;if(n.type==='Identifier')declared.add(n.name);else for(const v of Object.values(n))if(Array.isArray(v))v.forEach(pattern);else if(v&&typeof v==='object')pattern(v);}
           for(const statement of fn.body.body){
             if(statement.type==='VariableDeclaration')statement.declarations.forEach(d=>pattern(d.id));
             if(['FunctionDeclaration','ClassDeclaration'].includes(statement.type))pattern(statement.id);
           }
+        }
           // Route handle.play calls through this callback's lexical owner.
           function routeCalls(n){
             if(!n||typeof n!=='object')return;
@@ -43,7 +44,6 @@ export function bindLoopContext(source) {
           const tokens=[...tokenizer(source.slice(fn.start,fn.body.start),{ecmaVersion:'latest'})];
           const close=tokens.find(t=>t.type.label===')');
           if(close)edits.push({at:fn.start+close.start,text:`{${bound.join(',')}}`});
-        }
       }
     }
     for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);

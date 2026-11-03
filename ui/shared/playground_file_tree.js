@@ -9,12 +9,13 @@ export function buildFileTree(files) {
         parent.children.set(name, { name, path, children: new Map() });
       }
       parent = parent.children.get(name);
-      if (index === parts.length - 1) parent.file = file;
+      if (index < parts.length - 1 || file.directory) parent.directory = true;
+      else parent.file = file;
     });
   }
   function sorted(node) {
     return [...node.children.values()].sort((a, b) =>
-      Number(b.children.size > 0) - Number(a.children.size > 0) ||
+      Number(Boolean(b.directory)) - Number(Boolean(a.directory)) ||
       a.name.localeCompare(b.name, undefined, { numeric: true })
     ).map(child => ({ ...child, children: sorted(child) }));
   }
@@ -61,12 +62,13 @@ export function renderFileTree(root, files, { selectedPath, expanded, onOpen, on
     list.className = 'file-tree';
     for (const node of nodes) {
       const item = document.createElement('li');
-      if (node.children.length) {
+      if (node.directory) {
         const folder = document.createElement('details');
         folder.open = expanded.get(node.path) ?? selectedPath?.startsWith(`${node.path}/`) ?? false;
         const label = document.createElement('summary');
         label.textContent = node.name;
         label.title = node.path;
+        label.dataset.filePath = node.path;
         draggable(label, node.path);
         dropTarget(label, node.path);
         folder.append(label, render(node.children));
@@ -79,6 +81,7 @@ export function renderFileTree(root, files, { selectedPath, expanded, onOpen, on
         button.className = 'file-entry';
         button.textContent = node.name;
         button.title = node.path;
+        button.dataset.filePath = node.path;
         draggable(button, node.path);
         button.setAttribute('aria-current', String(node.path === selectedPath));
         button.addEventListener('click', () => { button.blur(); onOpen(node.path); });

@@ -230,3 +230,30 @@ test('operator property hover includes verified register ranges and defaults',as
   assert.match(docs,/default/);
  }
 });
+
+test('livePrepare infers factory results through globals, pg and loop helpers without context casts',async()=>{
+ for(const call of ['livePrepare','pg.livePrepare','ctx.livePrepare','ctx.pg.livePrepare']){
+  const body=`const lead=await ${call}('lead',async({midi,enableSoundChip})=>{await enableSoundChip('ym2612');return midi.output('tetorica-ym2612');});\nlead.`;
+  const marked=call.startsWith('ctx.')?`liveLoop('a',async ctx=>{${body}/*here*/});`:body+'/*here*/';
+  const names=await completions(marked);
+  for(const name of ['play','setVoice','loadVoice'])assert.ok(names.includes(name),`${call}: ${name}`);
+ }
+ const complete=`const state=await livePrepare('state',()=>({lead:midi.output('tetorica-ym2612'),ready:true}));await state.lead.play('C4');`;
+ assert.deepEqual(await diagnostics(language(complete)),[]);
+ const factoryMembers=await completions(`livePrepare('lead',async api=>{api./*here*/});`);
+ for(const name of ['midi','enableSoundChip','context','log'])assert.ok(factoryMembers.includes(name),name);
+});
+
+test('tween duration options and callback progress are typed on global, pg and loop APIs',async()=>{
+ const valid=`await tween({seconds:0.1},progress=>{log(lerp(0,127,progress));});
+ await pg.tween({beats:2},async progress=>{await pitchBend(progress);});
+ liveLoop('a',async ctx=>{await ctx.tween(0.1,n=>ctx.pg.cc(7,Math.round(n*127)));ctx.stopLoop('a');});`;
+ assert.deepEqual(await diagnostics(language(valid)),[]);
+ for(const code of [
+  `tween({seconds:1,beats:1},()=>{});`,
+  `pg.tween({beats:'two'},()=>{});`,
+  `tween({seconds:1},progress=>progress.toUpperCase());`,
+ ])assert.ok((await diagnostics(language(code))).length,code);
+ const fields=await completions(`tween({/*here*/},()=>{});`);
+ assert.ok(fields.includes('seconds'));assert.ok(fields.includes('beats'));
+});

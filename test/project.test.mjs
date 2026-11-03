@@ -16,6 +16,7 @@ test('run target is independent of the viewed guide and can select another scrip
  assert.equal(runSource(files,'/loop.js'),'loop');
  assert.throws(()=>runSource(files,'/README.md'));
  assert.throws(()=>runSource(files,'/missing.js'));
+ assert.throws(()=>runSource({'/.git/hooks/demo.js':'metadata'},'/.git/hooks/demo.js'));
 });
 
 test('New Project resets entry and settings without retaining edited project state',async()=>{

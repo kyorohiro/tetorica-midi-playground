@@ -18,6 +18,11 @@ under `ui/shared`; the original Browser application is unchanged. Monaco is not
 loaded from a CDN: it is bundled locally, with a textarea fallback. The editor
 checks JavaScript types and syntax, isolates each FILES script's scope, and
 provides MIDI API/JSDoc completion, hover and argument hints across relative imports.
+FILES supports folders, rename/move/copy/delete, binary voice import and project cassettes.
+Menu → Git provides local staging, diffs, commits, history and branch creation;
+Git history travels with the cassette. Remote operations are a later step.
+`livePrepare()` caches inferred initialization results across Apply; `tween()`
+animates MIDI controls over seconds or beats with loop cancellation.
 Links in API completion details and hover open read-only type declarations and
 JavaScript implementations; F12 also follows definitions in FILES.
 
@@ -27,7 +32,7 @@ setup for this. Code defaults to **internal BPM**. External beat waits are exper
 
 ```js
 setBpm(120);
-await play("C4", { duration: 0.5, channel: 1, velocity: 90 });
+await play("C4", { duration: 0.5, channel: CH1, velocity: 90 });
 await beat(0.5);
 liveLoop("melody", async () => {
   await play(choose(["C4", "E4", "G4"]), { duration: 0.5 });

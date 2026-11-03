@@ -26,7 +26,7 @@ export function configureJavaScript(monaco) {
 // Models retain per-file undo history and cursor/scroll state across FILES switches.
 export function createFileEditor(monaco, container, onChange) {
   const models = new Map(), views = new Map();
-  let current = null;
+  let current = null, reconciling = false;
   const editor = monaco.editor.create(container, {
     model: null, theme: 'vs-dark', automaticLayout: true,
     minimap: {enabled: false}, fontSize: 14, tabSize: 2,
@@ -38,7 +38,7 @@ export function createFileEditor(monaco, container, onChange) {
     quickSuggestions: {other: true, comments: false, strings: true},
   });
   const listener = editor.onDidChangeModelContent(() => {
-    if (current && !current.readOnly) onChange(current.path, editor.getValue());
+    if (current && !current.readOnly && !reconciling) onChange(current.path, editor.getValue());
   });
   return {
     editor,
@@ -52,10 +52,30 @@ export function createFileEditor(monaco, container, onChange) {
     },
     syncFiles(files) {
       for (const [path, text] of Object.entries(files)) {
-        if (/\.m?js$/i.test(path) && !models.has(path)) {
+        if (/\.m?js$/i.test(path) && typeof text === 'string' && !path.split('/').some(part=>part.toLowerCase()==='.git') && !models.has(path)) {
           models.set(path, monaco.editor.createModel(text, 'javascript', monaco.Uri.from({scheme: 'file', path})));
         }
       }
+    },
+    reconcileFiles(files, transfer = null) {
+      // Unchanged models keep their undo history. Renamed models retain view state.
+      reconciling = true;
+      try {
+        if (current) views.set(current.path, editor.saveViewState());
+        for (const [path, model] of models) {
+          if (!Object.hasOwn(files, path)) {
+            if (transfer && (path === transfer.from || path.startsWith(transfer.from + '/'))) {
+              const destination = transfer.to + path.slice(transfer.from.length);
+              if (views.has(path)) views.set(destination, views.get(path));
+            }
+            if (current?.path === path) {current = null; editor.setModel(null);}
+            model.dispose(); models.delete(path); views.delete(path);
+          } else if (typeof files[path] === 'string' && model.getValue() !== files[path]) {
+            model.setValue(files[path]);
+          }
+        }
+        this.syncFiles(files);
+      } finally { reconciling = false; }
     },
     open(path, text, readOnly) {
       if (current) views.set(current.path, editor.saveViewState());
@@ -106,29 +126,53 @@ export const helperDocs = {
   noteLerp: 'noteLerp(from, to, t): nearest integer MIDI note, not Pitch Bend.',
   log: 'log(...values): write to Console.',
   liveLoop: 'liveLoop(name, async ({play, beat, cycle}) => {...}): named repeating loop.',
-  stopLoop: 'stopLoop(name): stop a loop and release its scoped notes.',
+  stopLoop: 'stopLoop(name): stop a loop and release its scoped notes. Quoted names complete from liveLoop calls in this file.',
+  livePrepare: 'await livePrepare(name, async ({midi, context}) => value): initialize once per Run; Apply reuses the inferred result. Concurrent calls share initialization.',
+  tween: 'await tween({seconds: 1}, async t => {...}) or tween({beats: 4}, callback): progress from 0 to 1; callbacks run in order. Loop-local tweens stop with their loop.',
   stopAllLoops: 'stopAllLoops(): stop all loops.',
   onKeyboardPressKey: 'onKeyboardPressKey(name, callback): focused Keyboard input keydown.',
   onKeyboardReleaseKey: 'onKeyboardReleaseKey(name, callback): focused Keyboard input keyup.',
 };
 // Inspect tokens so text resembling import() inside comments/strings is ignored.
-function importPathRange(model, position) {
+function quotedCall(model, position) {
   if (!model.getValue || !model.getOffsetAt) return null;
   const source = model.getValue(), offset = model.getOffsetAt(position);
-  const match = /(["'])([^"'\\\r\n]*)$/.exec(source.slice(0, offset));
+  const match = /(["'])((?:\\.|(?!\1)[^\\\r\n])*\\?)$/.exec(source.slice(0, offset));
   if (!match) return null;
   const quote = offset - match[0].length;
+  let tokens;
   try {
-    const tokens = [...tokenizer(source.slice(0, quote) + '""', {ecmaVersion: 'latest'})];
+    tokens = [...tokenizer(source.slice(0, quote) + '""', {ecmaVersion: 'latest'})];
     const [keyword, open, string] = tokens.slice(-3);
-    if (keyword?.type.label !== 'import' || open?.type.label !== '(' || string?.type.label !== 'string' || string.start !== quote) return null;
-    if (['.', '?.'].includes(tokens.at(-4)?.type.label)) return null;
+    if (open?.type.label !== '(' || string?.type.label !== 'string' || string.start !== quote) return null;
+    const member = ['.', '?.'].includes(tokens.at(-4)?.type.label);
+    const call = keyword?.type.label === 'import' ? 'import' : keyword?.value;
+    if (!['import', 'stopLoop'].includes(call)) return null;
+    if (member && (call === 'import' || tokens.at(-5)?.value !== 'pg' || ['.', '?.'].includes(tokens.at(-6)?.type.label))) return null;
+    tokens.call = call;
   } catch { return null; }
-  const suffix = /^[^"'\\\r\n]*/.exec(source.slice(offset))[0];
-  return {
+  let end=offset,escaped=/\\+$/.exec(match[2])?.[0].length%2===1;
+  for(;end<source.length;end++){
+    const character=source[end];
+    if(/[\r\n]/.test(character)||(!escaped&&character===match[1]))break;
+    escaped=!escaped&&character==='\\';
+  }
+  return {call: tokens.call, quote: match[1], range: {
     startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
-    startColumn: position.column - match[2].length, endColumn: position.column + suffix.length,
-  };
+    startColumn: position.column - match[2].length, endColumn: position.column + end-offset,
+  }};
+}
+
+function loopNames(source) {
+  const tokens = [];
+  try { for (const token of tokenizer(source, {ecmaVersion: 'latest'})) tokens.push(token); } catch { /* Keep valid tokens before unfinished code. */ }
+  const names = new Set();
+  tokens.forEach((token, i) => {
+    if (token.type.label !== 'name' || token.value !== 'liveLoop' || tokens[i + 1]?.type.label !== '(' || tokens[i + 2]?.type.label !== 'string') return;
+    if (['.', '?.'].includes(tokens[i - 1]?.type.label) && (tokens[i - 2]?.value !== 'pg' || ['.', '?.'].includes(tokens[i - 3]?.type.label))) return;
+    names.add(tokens[i + 2].value);
+  });
+  return [...names].sort();
 }
 
 function relativeImportPath(from, to) {
@@ -141,8 +185,13 @@ export function registerHelpers(monaco, getFilePaths = () => [], definitionLinks
   return monaco.languages.registerCompletionItemProvider('javascript', {
     triggerCharacters: ['"', "'", '/', '.'],
     provideCompletionItems(model, position) {
-      const importRange = importPathRange(model, position);
-      if (importRange) {
+      const quoted = quotedCall(model, position);
+      if (quoted?.call === 'stopLoop') {
+        return {suggestions: loopNames(model.getValue()).map(name => ({label: name,
+          insertText: JSON.stringify(name).slice(1,-1).replace(/'/g, quoted.quote === "'" ? "\\'" : "'"),
+          detail: 'liveLoop in this file', kind: monaco.languages.CompletionItemKind.Value, range: quoted.range}))};
+      }
+      if (quoted?.call === 'import') {
         const from = model.uri.path;
         return {suggestions: getFilePaths()
           .filter(path => path !== from && /\.m?js$/i.test(path))
@@ -150,7 +199,7 @@ export function registerHelpers(monaco, getFilePaths = () => [], definitionLinks
           .map(path => {
             const specifier = relativeImportPath(from, path);
             return {label: specifier, insertText: specifier, detail: path,
-              kind: monaco.languages.CompletionItemKind.File, range: importRange};
+              kind: monaco.languages.CompletionItemKind.File, range: quoted.range};
           })};
       }
       const word = model.getWordUntilPosition(position);

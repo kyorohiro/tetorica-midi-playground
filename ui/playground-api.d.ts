@@ -153,6 +153,19 @@ declare function beat(count?: number): Promise<void>;
 /** Wait for the next beat. */
 declare function nextBeat(): Promise<void>;
 declare function setBpm(bpm: number): void;
+/** Duration for [tween](file:///tetorica-definition/tween). Choose elapsed seconds or beats following the shared BPM/external Clock. */
+type TweenDuration = number | {seconds: number; beats?: never} | {beats: number; seconds?: never};
+/** Animate progress from 0 to 1 using seconds or beats; numeric duration means seconds. Zero calls only 1. Async callbacks run serially; stopped loops never force a final callback. Timer-driven MIDI control, not sample-accurate automation. [tween](file:///tetorica-definition/tween) uses [TweenDuration](file:///tetorica-definition/TweenDuration). */
+declare function tween(duration: TweenDuration, onUpdate: (progress: number) => void | Promise<void>): Promise<void>;
+/** Run-wide initialization helpers. Preparation is shared across loops, rather than owned by the first loop that requests it. [LivePrepareContext](file:///tetorica-definition/LivePrepareContext) */
+interface LivePrepareContext {
+  context: PlaygroundContext;
+  midi: typeof midi;
+  enableSoundChip: typeof enableSoundChip;
+  log: typeof log;
+}
+/** Initialize a name once per Run and infer the returned value. Apply retains successful results and pending work; failures can be retried. Run/Stop resets the cache. Editing the factory requires Run or a new name. A loop cancelled while waiting cannot resume with the result. [livePrepare](file:///tetorica-definition/livePrepare) receives [LivePrepareContext](file:///tetorica-definition/LivePrepareContext). */
+declare function livePrepare<T>(name: string, factory: (api: LivePrepareContext) => T | Promise<T>): Promise<T>;
 declare function choose<T>(values: T[]): T;
 declare function cycle<T>(values: T[]): T;
 declare function cycle<T>(key: string, values: T[]): T;
@@ -198,6 +211,7 @@ interface TetoricaContext {
   noteOn: typeof noteOn; noteOff: typeof noteOff; cc: typeof cc; programChange: typeof programChange;
   pitchBend: typeof pitchBend; channelPressure: typeof channelPressure; polyPressure: typeof polyPressure; send: typeof send;
   play: typeof play; playOutput: typeof playOutput; beat: typeof beat; nextBeat: typeof nextBeat;
+  tween: typeof tween; livePrepare: typeof livePrepare;
   cycle: typeof cycle; setBpm: typeof setBpm; choose: typeof choose; scale: typeof scale; chord: typeof chord;
   rand: typeof rand; rrange: typeof rrange; randInt: typeof randInt; lerp: typeof lerp; noteLerp: typeof noteLerp;
   log: typeof log; stopLoop: typeof stopLoop; stopAllLoops: typeof stopAllLoops;

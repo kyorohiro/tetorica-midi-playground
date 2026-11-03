@@ -1,3 +1,4 @@
+import {createTween} from './tween.js';
 // MIDI-facing helpers. Timing here is internal BPM, not external MIDI Clock.
 export function noteNumber(value) {
   if (Number.isInteger(value) && value >= 0 && value <= 127) return value;
@@ -94,8 +95,10 @@ export function createMidiHelpers({send, sleep, log, bpm: initialBpm=120, now=()
     if(!Number.isFinite(midi)||midi<0||midi>127)throw new Error('Interpolated note outside MIDI range');
     return Math.round(midi);
   }
-  const api={play,beat,nextBeat,setBpm,choose,cycle,scale,chord,rand,rrange,randInt,lerp,noteLerp,log};
+  const createTimedTween=check=>createTween({seconds:()=>now()/1000,beats:currentBeat,sleep,check});
+  const api={play,beat,nextBeat,setBpm,tween:createTimedTween(),choose,cycle,scale,chord,rand,rrange,randInt,lerp,noteLerp,log};
   // Internal factory; do not inject it as a global in user scripts.
   Object.defineProperty(api,'createLoopTiming',{value:createLoopTiming});
+  Object.defineProperty(api,'createTween',{value:createTimedTween});
   return api;
 }
