@@ -151,7 +151,7 @@ onKeyboardPressKey("piano", async (event) => {
 });
 onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
 ```
-Press Run, click **Keyboard input** above the editor, then press A/S/D. Only this focused area forwards keys; typing in the editor does not play notes. Tab/Escape and Ctrl/Alt/Command shortcuts are excluded. Losing focus sends releases for forwarded held keys. Events contain key/code/type/repeat and modifier flags, not DOM methods. Repeated keydown events are ignored. A handler skips new events while its async callback is busy. Names replace handlers of the same event type; at most 32 handlers. Stop terminates the Worker and registrations; Run starts fresh. These callbacks play duration-based notes, not hold-to-sustain notes.
+Press Run, click the compact **Keyboard input** button beside the panel tabs, then press A/S/D. Only this focused area forwards keys; typing in the editor does not play notes. Tab/Escape and Ctrl/Alt/Command shortcuts are excluded. Losing focus sends releases for forwarded held keys. Events contain key/code/type/repeat and modifier flags, not DOM methods. Repeated keydown events are ignored. A handler skips new events while its async callback is busy. Names replace handlers of the same event type; at most 32 handlers. Stop terminates the Worker and registrations; Run starts fresh. These callbacks play duration-based notes, not hold-to-sustain notes.
 
 ## FILES modules
 
@@ -200,7 +200,7 @@ External `play` now schedules native Note Off by Clock pulse count: durations ar
 
 Select a MIDI output (for example GarageBand), then open **Keyboard**. No Run or script is needed. Click/hold the displayed keys or use the corresponding number and letter rows. Releasing a key sends Note Off. Choose MIDI channel CH1–CH16 and velocity 1–127. Multiple notes can sound on one channel. Instrument/fret controls change the FM Playground fingering layout; select the sound in your DAW.
 
-Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input above the Code editor is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
+Switching tabs, changing the channel/layout, leaving the window, Release notes or Stop releases held keyboard notes. Keyboard input beside the Code panel tabs is a separate script-event facility. For overlapping notes on the same MIDI channel/pitch, the latest sender owns the note; an earlier release cannot stop its replacement.
 
 ## Built-in YM2612 audition (macOS trial)
 

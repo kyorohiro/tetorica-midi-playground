@@ -72,3 +72,19 @@ FILES整理と共有ファイル管理を先に整え、ローカルGit、演奏
 - Git remote通信・OS資格情報は後続工程。checkout／merge／cloneは共有エンジンにもなく、今回のUIに含めない。
 - Nativeアプリでの手動実聴と外部MIDI機器・DAWのタイミング確認。今回のUI自動検証は実音源を再生していない。
 - Sync／Revertは保留のまま。今回の機能はまだリリースしていない。
+
+## Code表示の省スペース化とRunショートカット（2026-11-03）
+
+ユーザー追加依頼を実装前に記録し、下記を完了。
+
+- [x] Code上部の表示中パス見出しを取り除く。FILESの選択表示を使い、見出し専用の行を確保しない。
+- [x] Keyboard inputを小さい操作部へまとめ、フォーカス・キー入力・blur時の解放は保持する。
+- [x] ⌘／Ctrl+EnterをMonacoに届く前に処理し、Runと改行が同時に発生しないようにする。ダイアログ・IME入力・キーリピートも確認する。
+- [x] Chromium／WebKitでレイアウト、テキスト無変更とRun呼び出し回数、Keyboard入力を確認する。
+
+
+実装：Keyboard inputをCodeタブ列の右端に102×28px程度の小さいボタンとして配置し、パス見出し・専用説明行を削除。他のパネルでは非表示にする。Safari系でクリック時にbuttonへフォーカスしない挙動にも対応。Run／Stopのショートカット説明は各ボタンのtitleへ移す。
+
+検証：JavaScript全171件成功。実際のMonacoと演奏Workerを使用したChromium／WebKitで、⌘とCtrlのEnter実行前後にコード本文・モデルversionが不変、Runは1回のみ、キーリピートを抑制、通常Enterは改行、ダイアログ中はRunしないことを確認。Keyboard inputの押下・解放・blur時release、Code以外での非表示、Monaco読込失敗時のtextareaでも改行なしでRunすることを確認。両エンジンでページエラーなし。Nativeの接続は隔離スタブで、実音源やDAWは操作していない。
+
+一時検証：`/private/tmp/check-midi-code-ui.cjs`、結果`/private/tmp/midi-code-ui-report.json`、画面`/private/tmp/midi-code-ui-{chromium,webkit}.png`。

@@ -10,6 +10,7 @@ import {loadMonaco,createFileEditor,registerHelpers,configureJavaScript} from '.
 import {createDefinitionViewer} from './editor-definitions.js';
 import {registerDefinitionLinks} from './editor-definition-links.js';
 import {keyData} from './keyboard.js';
+import {installPerformanceShortcuts} from './performance-shortcuts.js';
 import {connectionStatus,midiOutputChoices} from './connection.js';
 import {leadExample} from './examples.js';
 import {ensureEntry,runSource,createNewProject,projectFileName} from './project.js';
@@ -21,7 +22,7 @@ import {createPlaygroundUi} from './shared/playground_ui.js';
 const invoke=window.__TAURI__.core.invoke;
 const $=id=>document.getElementById(id);
 let auditionKeyboard=null;
-const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>auditionKeyboard?.setView(tab)});
+const ui=createPlaygroundUi({extraTabs:["synthA","synthB","mixer"].map(name=>({name,button:$(name+"Tab"),panel:$(name+"Panel")})),...Object.fromEntries(['status','runtimeState','consoleOutput','codeTab','consoleTab','helpersTab','operatorTabButton','consolePanel','codePanel','helpersPanel','operatorPanel','keyboardTab','keyboardPanel'].map(id=>[id,$(id)])),onBottomTabChange:tab=>{auditionKeyboard?.setView(tab);$('keyboardInput').hidden=tab!=='code';}});
 auditionKeyboard=mountKeyboard($('keyboardPanel'),invoke,error=>{ui.setStatus(String(error));ui.logLine(String(error));});
 ui.installBottomTabHandlers();ui.setBottomTab('code');
 const projectStorageKey='midi-project-v1';
@@ -64,7 +65,7 @@ let selected=Object.hasOwn(files,savedProject?.selected)&&!isInternalProjectPath
 let explorer=null,gitPanel=null;
 function projectSnapshot(){return {...projectStore.snapshot(),runPath,selected,bpm:Number($('bpm').value),clockMode:$('clockMode').value,exactFiles:exactProjectFiles,name:projectName};}
 function persist(){if(saveBlocked)return;try{localStorage.setItem(projectStorageKey,JSON.stringify(projectSnapshot()));}catch{ui.setStatus('Local save failed. Use Export project to save your code.');}}
-function openFile(path){if(!Object.hasOwn(files,path)||isInternalProjectPath(path))return;selected=path;codeEditor?.open(path,filePreview(files[path]),isGuide(path)||isBinaryFile(files[path]));$('editor').value=filePreview(files[path]);$('fileTitle').textContent=path;$('editor').readOnly=isGuide(path)||isBinaryFile(files[path]);refreshRunFiles();explorer?.render();persist();}
+function openFile(path){if(!Object.hasOwn(files,path)||isInternalProjectPath(path))return;selected=path;codeEditor?.open(path,filePreview(files[path]),isGuide(path)||isBinaryFile(files[path]));$('editor').value=filePreview(files[path]);$('editor').readOnly=isGuide(path)||isBinaryFile(files[path]);refreshRunFiles();explorer?.render();persist();}
 function updateFile(path,text){pendingEdits.set(path,text);try{projectStore.write(path,text);files[path]=text;pendingEdits.delete(path);persist();}catch(error){ui.logLine(String(error));ui.setStatus('Edit could not be saved: '+String(error));}}
 function flushEditor(){
   if(!isGuide(selected)&&!isBinaryFile(files[selected])){
@@ -177,6 +178,8 @@ async function run(fn){try{await fn();}catch(e){ui.setStatus('Error — see Cons
 let worker=null,epoch=0,activeRunId=null,inputGeneration=0;
 const pressedKeys=new Map();
 const keyboardPad=$('keyboardInput');
+// Safari does not focus buttons on click; this button is the script's key target.
+keyboardPad.addEventListener('click',()=>keyboardPad.focus());
 for(const type of ['keydown','keyup'])keyboardPad.addEventListener(type,event=>{
   if(event.metaKey||event.ctrlKey||event.altKey||event.key==='Tab'||event.key==='Escape')return;
   if(!worker||event.repeat)return;
@@ -236,7 +239,7 @@ function performanceFiles(){return Object.fromEntries(Object.entries(files).filt
 $('clockMode').onchange=()=>run(stop);
 $('applyButton').onclick=()=>run(async()=>{if(!worker)throw new Error('Press Run first');flushEditor();worker.postMessage({type:'update',code:runSource(files,runPath),path:runPath,files:performanceFiles()});ui.setStatus('Applying '+runPath);});
 $('runButton').onclick=()=>run(start);$('stopButton').onclick=()=>run(stop);
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'&&!document.querySelector('dialog[open]')){e.preventDefault();run(start);}if(e.shiftKey&&e.key==='Escape'){e.preventDefault();run(stop);}},true);
+installPerformanceShortcuts({target:document,hasOpenDialog:()=>Boolean(document.querySelector('dialog[open]')),onRun:()=>run(start),onStop:()=>run(stop)});
 async function refresh(){const ports=await invoke('ports');outputMappings.refresh(ports.output);ports.output=midiOutputChoices(ports.output);for(const direction of ['input','output']){const previous=$(direction).value;const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=ports[direction].length?'Choose a MIDI port…':'No MIDI ports found';$(direction).replaceChildren(placeholder,...ports[direction].map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));if(ports[direction].some(p=>p.id===previous))$(direction).value=previous;}}
 const outputMappings=mountOutputMappings($('outputMappings'),{storage:localStorage,beforeChange:stop,onError:error=>{ui.logLine(String(error));ui.setStatus(String(error));}});
 $('refresh').onclick=()=>run(refresh);

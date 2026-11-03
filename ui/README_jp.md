@@ -148,7 +148,7 @@ onKeyboardPressKey("piano", async (event) => {
 });
 onKeyboardReleaseKey("piano", (event) => log("Released", event.code));
 ```
-Run後、エディター上の **Keyboard input** をクリックしてA/S/Dを押してください。この領域にフォーカスがあるときだけ送信するため、編集中の文字入力では発音しません。Tab/EscapeとCtrl/Alt/Command付き操作は対象外です。フォーカスを失うと送信済みの押下キーのreleaseを送ります。eventにはkey/code/type/repeatと修飾キー情報が入り、DOMメソッドはありません。キーリピートは無視し、非同期コールバックの実行中はそのハンドラーへの新規イベントをスキップします。同種の同名ハンドラーは置換、最大32個です。StopでWorkerと登録を破棄し、Runで新規開始します。発音はduration指定で、押している間だけ伸ばす仕様ではありません。
+Run後、パネルタブ横の小さい **Keyboard input** ボタン をクリックしてA/S/Dを押してください。この領域にフォーカスがあるときだけ送信するため、編集中の文字入力では発音しません。Tab/EscapeとCtrl/Alt/Command付き操作は対象外です。フォーカスを失うと送信済みの押下キーのreleaseを送ります。eventにはkey/code/type/repeatと修飾キー情報が入り、DOMメソッドはありません。キーリピートは無視し、非同期コールバックの実行中はそのハンドラーへの新規イベントをスキップします。同種の同名ハンドラーは置換、最大32個です。StopでWorkerと登録を破棄し、Runで新規開始します。発音はduration指定で、押している間だけ伸ばす仕様ではありません。
 
 ## FILES内のモジュール
 
@@ -197,7 +197,7 @@ Run file内の直接inline `liveLoop("lead", async () => { ... })` はplay/beat/
 
 MIDI outputをGarageBandなどに接続して **Keyboard** タブを開きます。Runやコードは不要です。画面のキーを押し続けるか、表示に対応する数字・英字のPCキーで演奏し、離すとNote Offを送ります。MIDIチャンネル1〜16・velocity1〜127を指定でき、同じチャンネルで和音も弾けます。楽器・フレットの選択はFM版と同じ指板配置を変えるもので、音色はDAW側で選びます。
 
-タブ・チャンネル・配置変更、ウィンドウ離脱、Release notes、Stopで保持音を解放します。Code上のKeyboard inputはスクリプトイベント用で、別機能です。同じチャンネル・音程が重なる場合は最後の発音元を優先し、古いキー解放で新しい音を消さないようにします。
+タブ・チャンネル・配置変更、ウィンドウ離脱、Release notes、Stopで保持音を解放します。Codeタブ横のKeyboard inputはスクリプトイベント用で、別機能です。同じチャンネル・音程が重なる場合は最後の発音元を優先し、古いキー解放で新しい音を消さないようにします。
 
 ## 内蔵YM2612で試す（macOS試験版）
 
