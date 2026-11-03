@@ -1,6 +1,6 @@
 import {isBinaryFile,binaryFile,fileBytes} from './project-assets.js';
 import {zipSync, unzipSync, strToU8} from './vendor/fflate.js';
-import {isGuide, guides, canRun, resolveGuideSelection} from './guide.js';
+import {isGuide, guides, canRun, resolveGuideSelection, validateRemovedGuides, withGuide} from './guide.js';
 import {createProjectFiles, isInternalProjectPath, normalizeProjectPath} from './project-files.js';
 
 export const MAX_PROJECT_BYTES = 16 * 1024 * 1024;
@@ -15,6 +15,7 @@ function validatePath(path) {
 }
 function validateProject(project) {
   if (!project || !project.files || typeof project.files !== 'object' || Array.isArray(project.files)) throw Error('Invalid project files');
+  const removedGuides = validateRemovedGuides(project.removedGuides);
   const files = {};
   for (const [path, text] of Object.entries(project.files)) {
     validatePath(path);
@@ -25,20 +26,28 @@ function validateProject(project) {
       if (!Object.hasOwn(guides, path)) throw Error('Bundled guide namespace is protected: ' + path);
     } else files[path] = text;
   }
-  if (!canRun(project.runPath) || isInternalProjectPath(project.runPath) || !Object.hasOwn(files, project.runPath)) throw Error('Project Run file is missing or not JavaScript');
+  const runnablePaths = Object.keys(files).filter(path => canRun(path) && !isInternalProjectPath(path));
+  const validRunPath = runnablePaths.length ? runnablePaths.includes(project.runPath) : project.runPath === '';
+  if (!validRunPath) throw Error('Project Run file is missing or not JavaScript');
   if (!Number.isFinite(project.bpm) || project.bpm < 1 || project.bpm > 999) throw Error('Project BPM must be between 1 and 999');
   if (!['internal', 'external'].includes(project.clockMode)) throw Error('Invalid project beat clock');
+  const availableGuides = withGuide({}, removedGuides);
   const resolvedSelection = resolveGuideSelection(project.selected, files);
-  const selected = (!isInternalProjectPath(resolvedSelection) && Object.hasOwn(files, resolvedSelection)) || Object.hasOwn(guides, resolvedSelection) ? resolvedSelection : project.runPath;
+  const selected = (!isInternalProjectPath(resolvedSelection) && Object.hasOwn(files, resolvedSelection)) || Object.hasOwn(availableGuides, resolvedSelection)
+    ? resolvedSelection
+    : project.runPath || Object.keys(availableGuides)[0] || Object.keys(files).find(path => !isInternalProjectPath(path)) || '';
   const hasDirectories = Object.hasOwn(project, 'directories');
-  const store = createProjectFiles({files, directories: hasDirectories ? project.directories : []});
+  const store = createProjectFiles({files, directories: hasDirectories ? project.directories : [], removedGuides});
   const result = {files: store.snapshot().files, runPath: project.runPath, selected, bpm: project.bpm, clockMode: project.clockMode};
   if (hasDirectories) result.directories = store.listDirectories();
+  if (removedGuides.length) result.removedGuides = removedGuides;
   return result;
 }
 
 export function exportProject(project) {
   const {files, ...settings} = validateProject(project);
+  // Empty workspaces and deleted guides use v3 settings without reviving folders.
+  if ((!Object.keys(files).length || settings.removedGuides?.length) && !Object.hasOwn(settings, 'directories')) settings.directories = [];
   const entries = Object.create(null);
   let total = 0;
   for (const [path, text] of Object.entries(files)) {

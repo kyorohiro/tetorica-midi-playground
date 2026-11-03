@@ -30,4 +30,10 @@ AIは機能追加・設計変更の前にこのファイルを読み、関連す
 
 - [todo004.md](todo004.md)：ShellとGitHub／HTTPS remote連携の実装・検証。仮想FILES、Native HTTPS・資格情報保存、/sysガイド分離、手動確認と対応範囲。
 
-- [todo005.md](todo005.md)：Expand相当のレイアウト固定、YM2612版へ寄せるFILESメニューとタブ。MIDI／Mixerは上段。
+- [todo005.md](todo005.md)：Expand相当のレイアウト固定、YM2612版へ寄せるFILESメニューとタブ。MIDI／Mixerは上段。Shell／Consoleの省スペース化、Git設定をトークンだけに統一（Git操作はShell）。
+
+- [todo006.md](todo006.md)：既存HTTPSリポジトリをFILESへ取り込むGit clone。pushはユーザーが実動作確認済み。
+
+- [todo007.md](todo007.md)：Shellの`rm -rf .`、空プロジェクトの保存、Tabパス補完とCtrl+A／Ctrl+E等の行編集。
+
+- [todo008.md](todo008.md)：sysガイドの削除状態を保存し、ガイドがない空のFILESにも対応する。

@@ -37,3 +37,23 @@ YM2612版のConsoleには手動Clearがなく、Run時等の内部処理で消�
 MIDI版はConsole／Shell選択時だけ下段タブ列へ⋯を表示し、Clear outputは表示中の出力だけを消す。Shellは独立した操作行、Executeボタン、常設補足文を廃止し、出力・プロンプト・入力を1つのスクロール領域へまとめた。停止は実行中だけタブ列へ表示する。Ctrl+LでShell表示消去、Ctrl+CでShellコマンドだけを中断し、テキスト選択中の通常コピーを維持する。説明は?へ移した。タブ変更・下段を閉じる操作でポップオーバーも閉じる。
 
 関連JavaScript15件、構文チェック、`git diff --check`成功。英日ガイドを更新して再生成した。Chromium／WebKitで本番UIのClear分離・ポップオーバー・履歴・cd後のプロンプト・Ctrl+L・選択中のCtrl+C・偽の保留中Git操作の中断を確認。Clear／中断で音楽のStopを呼ばず、120pxの下段でもスクロールして入力できる。既存UI回帰も成功、ページ例外なし。画面は`/private/tmp/midi-compact-shell-{chromium,webkit}-{800,1100}.png`。
+
+## Git設定をFM2612版へ統一（追加依頼）
+
+- [x] Git設定ダイアログをユーザー提示のFM2612版と同じ、トークン名・HTTPS host・Add token・Saved tokens・Delete・説明／結果・Closeだけの画面へ変更する。
+- [x] ローカルGit、作者・message・branch・remote・fetch／pull／pushのフォームと「Use selected token」を取り除き、Git操作は既存Shellへ統一する。ShellのGitエンジン・保存履歴・Native接続は保持する。
+- [x] 英日ガイドをShellからのGit操作へ更新し、設定画面・トークン操作・Shell共存を隔離Native fixtureで確認する。
+
+`mountProjectGit`をトークン設定だけの540px幅ダイアログへ変更。開くときはNativeの公開トークン一覧だけを取得し、プロジェクト初期化やGit statusを実行しない。Saved tokensの選択は削除対象の指定で、接続に使うトークンはNative接続画面で選ぶ。前回の選択を接続時の既定候補にする。Gitの操作要件はFM2612版と同じ共有エンジンのまま、設定画面に一度に表示していた項目を取り除いた。
+
+関連JavaScript27件、`git diff --check`成功。README・英日ガイド・Helper・Menuを更新してガイドを再生成。Chromium／WebKitで、設定項目がトークンだけであること、追加・削除、前回選択、未選択削除の拒否、非対応／利用できない資格情報ストアの表示、設定を開いても演奏が継続しGitを初期化しないことを確認。Shellのinit／config／add／commit／status／log／remote、BOM保持とclean状態、認証待ち中のNewと遅延結果破棄も確認。ページ例外なし、実HTTP・実資格情報へのアクセスなし。画面サイズ800×600／1100×760。証跡は`/private/tmp/midi-github-ui-report.json`、画面は`/private/tmp/midi-github-{chromium,webkit}-{800,1100}.png`。
+
+## git remote rm／remove（追加依頼）
+
+- [x] 共有Gitエンジンへ`git remote rm NAME`と`git remote remove NAME`を追加し、未登録remote・不正な引数を検証する。
+- [x] トランザクション内でremote設定・追跡refの削除を行い、作業ファイル・ローカルbranch・履歴を保持する。実ユーザーのGit設定は変更しない。
+- [x] 共有配布bundleとMIDI同梱bundleへ反映し、Shellからの削除・再登録、既存Git処理の回帰を確認する。help・ガイドを更新する。
+
+共有`packages/virtual-files/src/git.js`のremote処理へ削除を追加。成功時のShell出力は空で、未登録remote・不正名・引数不足／過多は変更せずエラーにする。対象remoteの設定、loose／packedの追跡refとsymbolic HEAD、対応するローカルbranchのupstream設定を一つのトランザクションで削除する。似た名前の別remote（origin-copy等）を保持し、取消時も部分反映しない。
+
+`npm run build:virtual-files`成功。共有Web版と標準ビルドが生成するFM2612 Desktop bundleを更新し、MIDI同梱bundleを同期した。vendor READMEのソース・bundle SHA-256とNative対応の説明も更新。共有Gitテスト8件＋MIDIのGit／remote／Native／Shell／guide関連28件、各リポジトリの差分検査が成功。Chromium／WebKitの本番UIでrm／remove→remote一覧→再登録、ローカルコードと履歴の保持、既存Git操作を確認。ページ例外なし、実remote・資格情報へのアクセスなし。

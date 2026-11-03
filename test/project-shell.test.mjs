@@ -2,8 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createProjectFiles} from '../ui/project-files.js';
 import {createProjectShell} from '../ui/project-shell.js';
+import {createProjectGit} from '../ui/project-git.js';
 import {binaryFile} from '../ui/project-assets.js';
-import {withGuide} from '../ui/guide.js';
+import {withGuide, guides} from '../ui/guide.js';
 
 const source = () => createProjectFiles({files: {'/index.js': 'play("C4");\n', '/notes.txt': 'C4\nE4\nG4\n', '/voices/bell.tfi': binaryFile([0, 255, 12, 7])}, directories: ['/empty']});
 const create = (store, options = {}) => createProjectShell({getStore: () => store, ...options});
@@ -48,13 +49,9 @@ test('mkdir, redirects, exact edits, binary copy and folder move publish complet
   assert.equal(store.fs.checkpoints.auto, false); assert.equal(Object.keys(store.snapshot().files).some(path => path.startsWith('/.tet.ss/')), false);
 });
 
-test('failed pipeline, last-JS deletion, path/size validation and unavailable commands are atomic', async () => {
+test('failed pipeline, path/size validation and unavailable commands are atomic', async () => {
   const store = source(), shell = create(store), before = store.snapshot();
   await rejected(shell, 'write notes.txt changed | unknown-command', /Unknown command/);
-  assert.deepEqual(store.snapshot(), before);
-  await rejected(shell, 'rm index.js', /at least one JavaScript/);
-  assert.deepEqual(store.snapshot(), before);
-  await rejected(shell, 'mv index.js index.txt', /at least one JavaScript/);
   assert.deepEqual(store.snapshot(), before);
   await rejected(shell, 'echo blocked > CON.txt', /portable/);
   await rejected(shell, "echo blocked > '/bad\\name.txt'", /Invalid (?:project|virtual) path/);
@@ -74,7 +71,7 @@ test('failed pipeline, last-JS deletion, path/size validation and unavailable co
   await rejected(crowdedShell, 'touch extra.txt', /1024 file/); assert.deepEqual(crowded.snapshot(), previous);
 });
 
-test('Git metadata stays hidden and every ordinary path mutation protects guides, ancestors and Git data', async () => {
+test('Git metadata stays hidden and ordinary writes and moves still protect guides, ancestors and Git data', async () => {
   const store = source();
   store.fs.writeBinary('/.git/HEAD', new Uint8Array([1, 2, 3]));
   store.fs.writeBinary('/parts/.git/HEAD', new Uint8Array([4, 5]));
@@ -86,7 +83,7 @@ test('Git metadata stays hidden and every ordinary path mutation protects guides
   const guide = Object.keys(withGuide({})).find(path => path.endsWith('/README.md'));
   assert.ok(guide); assert.match(await ok(shell, `cat ${guide}`), /Tetorica MIDI Playground/);
   for (const command of [
-    'echo hacked > /.git/HEAD', 'rm -r /.git', 'mkdir /.Git/new',
+    'echo hacked > /.git/HEAD', 'rm -r /.git', 'rm -rf /.git', 'mkdir /.Git/new',
     'mv parts somewhere', 'rm -r parts', `write ${guide} hacked`,
     'mkdir /sys/new', 'echo hacked > /metadata.json', 'rm -r /',
   ]) await rejected(shell, command, /protected/);
@@ -100,6 +97,115 @@ test('Git metadata stays hidden and every ordinary path mutation protects guides
   assert.equal(store.snapshot().directories.some(path => path === '/sys' || path.startsWith('/sys/')), false);
   assert.deepEqual(store.snapshot().files['/.git/HEAD'], before.files['/.git/HEAD']);
   assert.deepEqual(store.snapshot().files['/parts/.git/HEAD'], before.files['/parts/.git/HEAD']);
+});
+
+test('the last script may be renamed or removed and an empty project can be rebuilt', async () => {
+  const store=createProjectFiles({files:{'/index.js':'play(60)'}}),shell=create(store);
+  await ok(shell,'mv index.js notes.txt');
+  assert.deepEqual(store.snapshot().files,{'/notes.txt':'play(60)'});
+  await ok(shell,'mv notes.txt index.js');await ok(shell,'rm index.js');
+  assert.deepEqual(store.snapshot(),{files:{},directories:[]});
+  await ok(shell,'write index.js "play(62)"');
+  assert.equal(store.snapshot().files['/index.js'],'play(62)');
+});
+
+test('Shell can remove individual bundled guides, their subfolder and the entire sys tree', async () => {
+  const store = source(), changes = [], shell = create(store, {onChanged:(snapshot, detail) => changes.push({snapshot, detail})});
+  const allGuides = Object.keys(guides), libraryGuides = allGuides.filter(path => path.startsWith('/sys/lib/'));
+  assert.ok(libraryGuides.length > 0);
+  assert.match(await ok(shell, 'cat /sys/README.md'), /Tetorica MIDI Playground/);
+  await ok(shell, 'rm /sys/README.md');
+  assert.deepEqual(store.snapshot().removedGuides, ['/sys/README.md']);
+  assert.deepEqual(changes.at(-1).snapshot.removedGuides, ['/sys/README.md']);
+  assert.deepEqual(changes.at(-1).detail.removed, ['/sys/README.md']);
+  await rejected(shell, 'cat /sys/README.md', /not found|does not exist/i);
+  assert.match(await ok(shell, 'cat /sys/README_jp.md'), /MIDI Playground/);
+  const beforeMissing = store.snapshot();
+  await rejected(shell, 'rm /sys/missing.md', /not found|does not exist/i);
+  assert.deepEqual(store.snapshot(), beforeMissing);
+  await ok(shell, 'rm -f /sys/missing.md');
+  assert.deepEqual(store.snapshot(), beforeMissing);
+  await rejected(shell, 'rm /sys/lib', /directory|recursive/i);
+  assert.deepEqual(store.snapshot(), beforeMissing);
+  await ok(shell, 'rm -r /sys/lib');
+  assert.deepEqual([...store.snapshot().removedGuides].sort(), ['/sys/README.md', ...libraryGuides].sort());
+  assert.doesNotMatch(await ok(shell, 'ls /sys'), /lib/);
+  assert.match(await ok(shell, 'cat /sys/README_jp.md'), /MIDI Playground/);
+  assert.equal(Object.hasOwn(withGuide(store.snapshot().files, store.snapshot().removedGuides), '/sys/README.md'), false);
+  await ok(shell, 'rm -rf sys');
+  assert.deepEqual([...store.snapshot().removedGuides].sort(), allGuides.sort());
+  assert.doesNotMatch(await ok(shell, 'ls /'), /sys/);
+  assert.doesNotMatch(await ok(shell, 'find /'), /\/sys(?:\/|\n)/);
+  await rejected(shell, 'cat /sys/README_jp.md', /not found|does not exist/i);
+  assert.equal(store.snapshot().files['/index.js'], 'play("C4");\n');
+  await rejected(shell, 'echo hacked > /sys/README.md', /protected/);
+  await rejected(shell, 'mkdir /sys/lib', /protected/);
+});
+
+test('guide visibility metadata is atomic across pipeline failures and later ordinary file changes', async () => {
+  const store = source(), shell = create(store);
+  await ok(shell, 'rm /sys/README.md');
+  const before = store.snapshot();
+  await rejected(shell, 'rm -r /sys/lib | unknown-command', /Unknown command/);
+  assert.deepEqual(store.snapshot(), before);
+  assert.match(await ok(shell, 'cat /sys/lib/README.md'), /Libraries/);
+  await ok(shell, 'echo updated > notes.txt');
+  assert.deepEqual(store.snapshot().removedGuides, ['/sys/README.md']);
+  await rejected(shell, 'cat /sys/README.md', /not found|does not exist/i);
+  const reopened = createProjectFiles(store.snapshot()), reopenedShell = create(reopened);
+  await rejected(reopenedShell, 'cat /sys/README.md', /not found|does not exist/i);
+  assert.match(await ok(reopenedShell, 'cat /sys/lib/README.md'), /Libraries/);
+});
+
+test('force recursive root clearing removes real Git, nested metadata, empty folders and bundled guides', async () => {
+  const store=source(),git=createProjectGit({getStore:()=>store}),changes=[];let gitCalls=0;
+  await git.execute('init');
+  store.fs.writeBinary('/parts/.git/HEAD',new Uint8Array([1,2]));store.mkdir('/parts/empty/deep');
+  const shell=create(store,{git:()=>{gitCalls++;return git;},onChanged:(snapshot,detail)=>changes.push({snapshot,detail})});
+  await ok(shell,'rm -rf .');
+  assert.deepEqual(store.snapshot().files,{});assert.deepEqual(store.snapshot().directories,[]);
+  assert.deepEqual([...store.snapshot().removedGuides].sort(),Object.keys(guides).sort());
+  assert.equal(changes.at(-1).detail.clearedRoot,true);assert.deepEqual(changes.at(-1).detail.removed,['/']);
+  const guide=Object.keys(withGuide({})).find(path=>path.endsWith('/README.md'));
+  await rejected(shell,`cat ${guide}`,/not found|does not exist/i);
+  assert.doesNotMatch(await ok(shell,'ls /'),/sys/);
+  for(const command of ['rm -fr ./','rm --force --recursive /']){
+    await ok(shell,command);assert.deepEqual(store.snapshot().files,{});assert.deepEqual(store.snapshot().directories,[]);
+    assert.deepEqual([...store.snapshot().removedGuides].sort(),Object.keys(guides).sort());
+    assert.equal(changes.at(-1).detail.clearedRoot,true);
+  }
+  assert.equal(gitCalls,0);
+});
+
+test('root clearing is transactional across pipeline failure and stays local to the current directory', async () => {
+  const store=source(),git=createProjectGit({getStore:()=>store});await git.execute('init');
+  store.remove('/sys/README.md');
+  const shell=create(store),before=store.snapshot();
+  await rejected(shell,'rm -rf . | unknown-command',/Unknown command/);
+  assert.deepEqual(store.snapshot(),before);
+  await ok(shell,'cd voices');await ok(shell,'rm -rf .');
+  assert.equal(store.snapshot().files['/index.js'],before.files['/index.js']);
+  assert.deepEqual(store.snapshot().files['/.git/HEAD'],before.files['/.git/HEAD']);
+  assert.equal(Object.hasOwn(store.snapshot().files,'/voices/bell.tfi'),false);
+  assert.equal(store.snapshot().directories.includes('/voices'),false);
+  assert.deepEqual(store.snapshot().removedGuides,before.removedGuides);
+  assert.match(await ok(shell,'cat /sys/README_jp.md'),/MIDI Playground/);
+  assert.equal(shell.cwd,'/');
+});
+
+test('cancellation or replacing the project before root-clear mutation keeps the previous files intact', async () => {
+  for(const action of ['cancel','replace']){
+    let store=source(),resume;store.remove('/sys/README.md');const original=store,before=store.snapshot();let changes=0;
+    const shell=createProjectShell({getStore:()=>store,beforeMutation:()=>new Promise(resolve=>{resume=resolve;}),onChanged:()=>changes++});
+    const pending=shell.execute('rm -rf .');while(!resume)await Promise.resolve();
+    if(action==='cancel')shell.stop();else store=createProjectFiles({files:{'/new.js':'new'}});
+    resume();assert.notEqual((await pending).code,0);assert.deepEqual(original.snapshot(),before);assert.equal(changes,0);
+    if(action==='replace'){
+      assert.deepEqual(store.snapshot().files,{'/new.js':'new'});
+      assert.equal(store.snapshot().removedGuides,undefined);
+      assert.ok(Object.hasOwn(withGuide(store.snapshot().files,store.snapshot().removedGuides),'/sys/README.md'));
+    }
+  }
 });
 
 test('an edit during async inspection prevents pending writes and retains the newer text', async () => {
@@ -168,4 +274,34 @@ test('git shell commands use the shared controller and never replay stale draft 
   const nested = await shell.execute('pipeline --json "git init"');
   assert.notEqual(nested.code, 0); assert.match(JSON.parse(nested.stdout).stderr, /directly/);
   assert.equal(actions.length, count); assert.equal(Object.hasOwn(store.snapshot().files, '/result.txt'), false);
+});
+
+test('git remote rm and remove remove only the named remote without changing files or commits', async () => {
+  const store = source(), git = createProjectGit({getStore: () => store});
+  const shell = create(store, {git: () => git});
+  await ok(shell, 'git init');
+  await ok(shell, 'git config user.name "MIDI Test"');
+  await ok(shell, 'git config user.email midi@example.invalid');
+  await ok(shell, 'git add /');
+  await ok(shell, 'git commit -m "Keep the song"');
+  const history = await git.execute('log');
+  const workingFiles = Object.fromEntries(Object.entries(store.snapshot().files).filter(([path]) => !path.startsWith('/.git/')));
+
+  await ok(shell, 'git remote add origin https://example.invalid/first.git');
+  assert.equal(await ok(shell, 'git remote rm origin'), '');
+  assert.equal(await ok(shell, 'git remote'), '');
+  await rejected(shell, 'git remote get-url origin', /remote/i);
+
+  await ok(shell, 'git remote add origin https://example.invalid/replacement.git');
+  await ok(shell, 'git remote add backup https://example.invalid/backup.git');
+  assert.equal(await ok(shell, 'git remote remove origin'), '');
+  assert.equal(await ok(shell, 'git remote'), 'backup\n');
+  assert.equal(await ok(shell, 'git remote get-url backup'), 'https://example.invalid/backup.git\n');
+  assert.deepEqual(await git.execute('log'), history);
+  assert.deepEqual(Object.fromEntries(Object.entries(store.snapshot().files).filter(([path]) => !path.startsWith('/.git/'))), workingFiles);
+
+  const beforeFailure = store.snapshot();
+  await rejected(shell, 'git remote rm missing', /remote/i);
+  await rejected(shell, 'git remote remove ../bad', /Invalid remote name/);
+  assert.deepEqual(store.snapshot(), beforeFailure);
 });

@@ -42,6 +42,12 @@ export function createFileEditor(monaco, container, onChange) {
   });
   return {
     editor,
+    clear() {
+      if (current) views.set(current.path, editor.saveViewState());
+      current = null;
+      editor.setModel(null);
+      editor.updateOptions({readOnly:true});
+    },
     replaceFiles(files) {
       // Detach before disposal so replacement never saves stale text into the new project.
       current = null;

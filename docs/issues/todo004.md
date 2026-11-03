@@ -2,6 +2,10 @@
 
 2026-11-03。ユーザー依頼を実装前に記録する。既存のFILES／ローカルGitへ、本体と同じ仮想ShellとGitHubを含むHTTPS remote操作を追加する。
 
+現行のGit設定画面は[todo005.md](todo005.md)の追加依頼でFM2612版と同じトークン設定だけへ変更済み。Gitの履歴・作者・remote・通信操作はShellの`git`コマンドで行う。以下のGit操作フォームの記録は初期実装時のもの。
+
+cloneの後続対応は[todo006.md](todo006.md)を参照。
+
 ## 対象
 
 - [x] 共有VirtualFS Shellを再利用し、FILESを対象とするShellタブ・入力・履歴・出力を用意する。ホストOSのシェルではなく、プロジェクト内のpwd／ls／cd／cat／mkdir／cp／mv／rm／echo等とパイプ・リダイレクトを扱う。
@@ -44,7 +48,7 @@
 
 ## 残る手動確認・範囲外
 
-- 利用者自身のPAT登録・Keychain確認、空のテストGitHub repositoryへの最初のpushと、別環境commit後のfetch／pull。
+- 2026-11-03：ユーザーから実際のpush成功を確認。別環境commit後のfetch／pull、資格情報ストア自体の確認は別途行う。
 - macOS以外のNativeビルド・実際の資格情報ストアは未確認。親のplatformコードを保持したことは、Windows／Linux検証済みを意味しない。
 - clone／checkout／mergeは共有Gitエンジンに未搭載。無関係な既存GitHub repoを初期プロジェクトへ読み込む手順は提供しない。
 - ShellはOSシェル・任意JavaScript実行ではなくFILES用。`js`／`play`／`result`、Shell固有snapshot／undo、コマンド連結・展開は未公開。`help`に対応範囲を表示する。

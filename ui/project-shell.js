@@ -1,16 +1,17 @@
-import {createShell} from './shared/virtual-files/shell.js';
+import {createShell, parseRmArgs} from './shared/virtual-files/shell.js';
+import {installShellInput} from './shell-input.js';
 import {parsePipeline} from './shared/virtual-files/pipeline.js';
 import {createVirtualFileSystem} from './shared/virtual-files/filesystem.js';
 import {registerGitShell} from './vendor/virtual-git/git.bundle.js';
 import {createProjectFiles, isInternalProjectPath, normalizeProjectPath} from './project-files.js';
 import {binaryFile, isBinaryFile} from './project-assets.js';
-import {withGuide, isGuide, canRun} from './guide.js';
+import {withGuide, isGuide, guides} from './guide.js';
 
 const readCommands = new Set(['pwd', 'ls', 'cd', 'cat', 'echo', 'find', 'rg', 'read', 'help']);
 const unavailable = new Set(['snapshot', 'undo', 'diff']);
 const usages = {
   pwd: 'pwd', ls: 'ls [PATH]', cd: 'cd [PATH]', cat: 'cat PATH|-', echo: 'echo [TEXT...]',
-  mkdir: 'mkdir [-p] PATH', touch: 'touch PATH', write: 'write PATH TEXT', rm: 'rm [-r] PATH',
+  mkdir: 'mkdir [-p] PATH', touch: 'touch PATH', write: 'write PATH TEXT', rm: 'rm [-r|-R|--recursive] [-f|--force] [--] PATH',
   cp: 'cp SOURCE DESTINATION', mv: 'mv SOURCE DESTINATION',
   find: 'find [PATH] [-name GLOB] [-type f|d] [--json] [--offset N] [--limit N]',
   rg: 'rg [-n] [-F] [-i] [-l] [--json] [--offset N] [--limit N] LITERAL [PATH]',
@@ -26,7 +27,8 @@ const sameData = (a, b) => typeof a === 'string' ? a === b : isBinaryFile(b) && 
 function changed(before, after) {
   const paths = Object.keys(before.files);
   return paths.length !== Object.keys(after.files).length || paths.some(path => !sameData(before.files[path], after.files[path])) ||
-    before.directories.length !== after.directories.length || before.directories.some((path, i) => path !== after.directories[i]);
+    before.directories.length !== after.directories.length || before.directories.some((path, i) => path !== after.directories[i]) ||
+    JSON.stringify(before.removedGuides ?? []) !== JSON.stringify(after.removedGuides ?? []);
 }
 
 /** Virtual FILES commands only: never evaluates JavaScript or invokes an OS shell.
@@ -71,11 +73,12 @@ export function createProjectShell({getStore, beforeCommand = () => {}, beforeMu
         };
         const hiddenFiles = Object.fromEntries(Object.entries(before.files).filter(([path]) => isInternalProjectPath(path)));
         const hiddenDirectories = before.directories.filter(isInternalProjectPath);
-        const visible = withGuide(Object.fromEntries(Object.entries(before.files).filter(([path]) => !isInternalProjectPath(path))));
+        const visible = withGuide(Object.fromEntries(Object.entries(before.files).filter(([path]) => !isInternalProjectPath(path))), before.removedGuides);
         const draft = createVirtualFileSystem(Object.entries(visible).map(([path, value]) => ({path, data: typeof value === 'string' ? value : Uint8Array.from(value.bytes)})), {autoCheckpoint: false});
         draft.replace(draft.list(), [...draft.listDirectories(), ...before.directories.filter(path => !isInternalProjectPath(path))]);
         const guideOnlyDirectories = new Set(draft.listDirectories().filter(path => !before.directories.includes(path) && path !== '/'));
         const transfers = [], removed = [];
+        let clearedRoot = false;
         const authorize = (operation, paths) => {
           assertActive();
           for (const input of paths) {
@@ -89,6 +92,20 @@ export function createProjectShell({getStore, beforeCommand = () => {}, beforeMu
         let start = cwd;
         try { if (draft.stat(start).type !== 'directory') start = '/'; } catch { start = '/'; }
         shell = createShell({fs: draft, cwd: start, authorize});
+        shell.register('rm', context => {
+          const {path:input,recursive,force} = parseRmArgs(context.args), path = context.resolve(input);
+          context.assertActive();assertActive();
+          if (path === '/') {
+            if (!recursive || !force) throw Error('This project root is protected without recursive force. Use rm -rf . to clear it.');
+            // Clear the virtual project, including guides and hidden Git.
+            context.fs.replace([],[]);
+            clearedRoot = true;removed.push('/');return;
+          }
+          if (isGuide(path)) removed.push(path);
+          else authorize('rm',[path]);
+          if (force && !context.fs.has(path) && !context.fs.listDirectories().includes(path)) return;
+          context.fs.remove(path,{recursive});
+        });
         for (const name of unavailable) shell.register(name, () => { throw Error('Shell snapshots and undo are not available. Use git diff and git log for saved history.'); });
         shell.register('help', ({args}) => {
           if (args.length > 1) throw Error('Usage: help [COMMAND|--json]');
@@ -99,30 +116,36 @@ export function createProjectShell({getStore, beforeCommand = () => {}, beforeMu
         if (gitCommand) {
           const repository = git();
           if (!repository?.execute) throw Error('Git controller is unavailable');
-          registerGitShell(shell, {execute: (action, args, guards) => repository.execute(action, args, {
-            ...guards, signal: controller.signal, assertActive: () => { assertActive(); guards?.assertActive?.(); },
-          })});
+          registerGitShell(shell, {async execute(action, args, guards) {
+            const result = await repository.execute(action, args, {
+              ...guards, signal: controller.signal, assertActive: () => { assertActive(); guards?.assertActive?.(); },
+            });
+            if (action === 'clone' && result.completed) cwd = '/';
+            return result;
+          }});
         } else shell.register('git', () => { throw Error('Run Git commands directly, separately from nested commands or pipelines'); });
         const result = await shell.execute(source, {signal: controller.signal});
         assertActive();
         if (result.code !== 0) return result;
         if (!gitCommand) {
           const snapshot = {
-            files: {...hiddenFiles, ...Object.fromEntries(draft.list().filter(file => !isGuide(file.path)).map(file => [file.path, typeof file.data === 'string' ? file.data : binaryFile(file.data)]))},
-            directories: [...hiddenDirectories, ...draft.listDirectories().filter(path => path !== '/' && !isGuide(path) && !inside(path.toLowerCase(), '/sys') && !guideOnlyDirectories.has(path))],
+            files: {...(clearedRoot ? {} : hiddenFiles), ...Object.fromEntries(draft.list().filter(file => !isGuide(file.path)).map(file => [file.path, typeof file.data === 'string' ? file.data : binaryFile(file.data)]))},
+            directories: [...(clearedRoot ? [] : hiddenDirectories), ...draft.listDirectories().filter(path => path !== '/' && !isGuide(path) && !inside(path.toLowerCase(), '/sys') && !guideOnlyDirectories.has(path))],
+            removedGuides: Object.keys(guides).filter(path => !draft.has(path)),
           };
           // The validator also catches a non-portable or protected path introduced
           // indirectly by a nested patch/redirect before it can reach the live fs.
           for (const path of Object.keys(snapshot.files)) if (!Object.hasOwn(before.files, path) && protectedPath(path)) throw Error('This project path is protected: ' + path);
-          if (!Object.keys(snapshot.files).some(path => !isInternalProjectPath(path) && !isGuide(path) && canRun(path))) throw Error('Keep at least one JavaScript Run file in this project');
           // Use the same limits/path rules as FILES and cassette imports.
           const validated = createProjectFiles(snapshot).snapshot();
           assertActive();
-          if (changed(before, validated)) {
-            store.sync(validated.files, validated.directories);
-            onChanged(store.snapshot(), {transfers, removed});
+          if (clearedRoot || changed(before, validated)) {
+            store.sync(validated.files, validated.directories, validated.removedGuides ?? []);
+            onChanged(store.snapshot(), {transfers, removed, ...(clearedRoot ? {clearedRoot:true} : {})});
           }
           cwd = shell.cwd;
+          const remaining = withGuide(validated.files, validated.removedGuides);
+          if (cwd !== '/' && !validated.directories.includes(cwd) && !Object.keys(remaining).some(path => path.startsWith(cwd + '/'))) cwd = '/';
         }
         return result;
       } catch (error) {
@@ -152,6 +175,16 @@ export function mountProjectShell({root, stopButton, onError = () => {}, ...opti
     prompt.textContent = controller.cwd + ' $';
   }
   function clearOutput() {output.textContent = '';scroll();input.focus();}
+  const lineInput = installShellInput({input,getCwd:() => controller.cwd,scroll,
+    getFs() {
+      options.beforeCommand?.();
+      const snapshot=options.getStore().snapshot();
+      const visible=withGuide(Object.fromEntries(Object.entries(snapshot.files).filter(([path])=>!isInternalProjectPath(path))),snapshot.removedGuides);
+      const fs=createVirtualFileSystem(Object.entries(visible).map(([path,value])=>({path,data:typeof value==='string'?value:Uint8Array.from(value.bytes)})),{autoCheckpoint:false});
+      fs.replace(fs.list(),[...fs.listDirectories(),...snapshot.directories.filter(path=>!isInternalProjectPath(path))]);
+      return fs;
+    },onMatches:(matches,source) => append(`${controller.cwd} $ ${source}\n${matches.join('  ')}\n`),
+  });
   async function execute(source = input.value) {
     if (disposed || controller.busy || !source.trim()) return;
     const epoch = viewGeneration;
@@ -196,6 +229,6 @@ export function mountProjectShell({root, stopButton, onError = () => {}, ...opti
   return {
     execute, clearOutput, focus() { input.focus();scroll(); },
     invalidate() { viewGeneration++; controller.invalidate(); history.length = 0; historyIndex = 0; draftInput = ''; input.value = ''; output.textContent = 'Project changed. Shell working directory reset to /.\n'; prompt.textContent = '/ $';scroll(); },
-    dispose() { disposed = true; viewGeneration++; controller.dispose(); root.removeEventListener('keydown',shortcut);terminal.removeEventListener('click',focusTerminal);stopButton?.removeEventListener('click',stop);root.replaceChildren(); },
+    dispose() { disposed = true; viewGeneration++; controller.dispose();lineInput.dispose(); root.removeEventListener('keydown',shortcut);terminal.removeEventListener('click',focusTerminal);stopButton?.removeEventListener('click',stop);root.replaceChildren(); },
   };
 }

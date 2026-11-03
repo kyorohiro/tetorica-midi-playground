@@ -1,7 +1,7 @@
 import {createVirtualFileSystem, transferVirtualFiles} from './shared/virtual-files/filesystem.js';
 import {resolvePath} from './shared/virtual-files/path.js';
 import {binaryFile, isBinaryFile} from './project-assets.js';
-import {isGuide, guides, canRun} from './guide.js';
+import {isGuide, guides, canRun, validateRemovedGuides} from './guide.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_FILES = 1023; // A cassette also contains metadata.json.
@@ -77,16 +77,19 @@ function validated(files, directories = []) {
   return draft;
 }
 
-function toSnapshot(fs) {
+function toSnapshot(fs, removedGuides = []) {
   return {
     files: Object.fromEntries(fs.list().map(file => [file.path, typeof file.data === 'string' ? file.data : binaryFile(file.data)])),
     directories: fs.listDirectories().filter(path => path !== '/'),
+    ...(removedGuides.length ? {removedGuides: [...removedGuides]} : {}),
   };
 }
 
 function sameSnapshot(a, b) {
   const paths = Object.keys(a.files), other = Object.keys(b.files);
   if (paths.length !== other.length || a.directories.length !== b.directories.length || a.directories.some((path, i) => path !== b.directories[i])) return false;
+  const removed = a.removedGuides ?? [], otherRemoved = b.removedGuides ?? [];
+  if (removed.length !== otherRemoved.length || removed.some((path, i) => path !== otherRemoved[i])) return false;
   return paths.every(path => {
     const left = a.files[path], right = b.files[path];
     return typeof left === 'string' ? left === right : isBinaryFile(right) && left.bytes.length === right.bytes.length && left.bytes.every((byte, i) => byte === right.bytes[i]);
@@ -95,14 +98,16 @@ function sameSnapshot(a, b) {
 
 /** JSON-safe project values around the shared memory filesystem. Mutations
  * validate a private draft before publishing; Git receives the stable fs. */
-export function createProjectFiles({files = {}, directories = []} = {}) {
+export function createProjectFiles({files = {}, directories = [], removedGuides: initialRemovedGuides = []} = {}) {
+  let removedGuides = validateRemovedGuides(initialRemovedGuides);
   const initial = validated(files, directories);
   const fs = createVirtualFileSystem([], {autoCheckpoint: false});
   fs.restore(initial.snapshot());
   let revision = 1;
   fs.onDidChange(() => { revision++; });
-  function publish(draft, {force = false} = {}) {
-    if (!force && sameSnapshot(toSnapshot(fs), toSnapshot(draft))) return false;
+  function publish(draft, {force = false, removedGuides: nextRemovedGuides = removedGuides} = {}) {
+    if (!force && sameSnapshot(toSnapshot(fs, removedGuides), toSnapshot(draft, nextRemovedGuides))) return false;
+    removedGuides = [...nextRemovedGuides];
     fs.replace(draft.list(), draft.listDirectories());
     return true;
   }
@@ -117,9 +122,9 @@ export function createProjectFiles({files = {}, directories = []} = {}) {
   const api = {
     fs,
     get revision() { return revision; },
-    snapshot() { return toSnapshot(fs); },
+    snapshot() { return toSnapshot(fs, removedGuides); },
     listDirectories() { return fs.listDirectories().filter(path => path !== '/'); },
-    validate(files, directories = []) { validated(files, directories); },
+    validate(files, directories = [], nextRemovedGuides = removedGuides) { validated(files, directories); validateRemovedGuides(nextRemovedGuides); },
     /** Git validates its isolated draft before publishing through fs.replace. */
     validateReplacement(entries, directories = []) {
       if (!Array.isArray(entries)) throw Error('Invalid project file entries');
@@ -133,9 +138,20 @@ export function createProjectFiles({files = {}, directories = []} = {}) {
       validated(files, directories);
     },
     /** Flush editor state without changing unchanged revisions. */
-    sync(files, directories = api.listDirectories()) { return publish(validated(files, directories)); },
+    sync(files, directories = api.listDirectories(), nextRemovedGuides = removedGuides) {
+      return publish(validated(files, directories), {removedGuides: validateRemovedGuides(nextRemovedGuides)});
+    },
     /** New/Import must invalidate in-flight operations even for identical data. */
-    replace(files, directories = []) { publish(validated(files, directories), {force: true}); },
+    replace(files, directories = [], nextRemovedGuides = removedGuides) {
+      publish(validated(files, directories), {force: true, removedGuides: validateRemovedGuides(nextRemovedGuides)});
+    },
+    /** Delete visible bundled guides without storing editable /sys payloads. */
+    removeGuides(path) {
+      const normalized = normalizeProjectPath(path).toLowerCase();
+      const targets = guidePaths.filter(candidate => normalized === '/' || inside(candidate.toLowerCase(), normalized));
+      if (!targets.length || (normalized !== '/' && !isGuide(normalized))) throw Error('Bundled guide path does not exist: ' + path);
+      return publish(fs, {removedGuides: validateRemovedGuides([...new Set([...removedGuides, ...targets])])});
+    },
     write(path, value) {
       path = ordinaryPath(path);
       return mutate(draft => {
@@ -169,6 +185,7 @@ export function createProjectFiles({files = {}, directories = []} = {}) {
       });
     },
     remove(path) {
+      if (isGuide(normalizeProjectPath(path))) return api.removeGuides(path);
       path = ordinaryPath(path);
       return mutate(draft => {
         if ([...draft.list().map(file => file.path), ...draft.listDirectories()].some(candidate => inside(candidate, path) && isInternalProjectPath(candidate))) throw Error('Folder contains protected Git metadata: ' + path);

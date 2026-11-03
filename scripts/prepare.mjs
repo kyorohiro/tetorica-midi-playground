@@ -4,7 +4,22 @@ const guides={};
 for(const name of ['README.md','README_jp.md','lib/README.md','lib/README_jp.md']) guides['/sys/'+name]=await readFile(new URL('ui/'+name,base),'utf8');
 await writeFile(new URL('ui/guide.js',base),`// Generated from README.md / README_jp.md by scripts/prepare.mjs
 export const guides = ${JSON.stringify(guides)};
-export function withGuide(files) { return {...files, ...guides}; }
+/** Persist only known bundled paths; hidden guides are not project files. */
+export function validateRemovedGuides(value = []) {
+  if (!Array.isArray(value)) throw Error('Invalid removed guides');
+  const seen = new Set();
+  for (const path of value) {
+    if (typeof path !== 'string' || !Object.hasOwn(guides, path)) throw Error('Unknown removed guide path: ' + path);
+    if (seen.has(path)) throw Error('Duplicate removed guide path: ' + path);
+    seen.add(path);
+  }
+  return Object.keys(guides).filter(path => seen.has(path));
+}
+export function withGuide(files, removedGuides = []) {
+  const removed = new Set(validateRemovedGuides(removedGuides));
+  return {...Object.fromEntries(Object.entries(files).filter(([path]) => !isGuide(path))),
+    ...Object.fromEntries(Object.entries(guides).filter(([path]) => !removed.has(path)))};
+}
 export function isGuide(path) {
   if (typeof path !== 'string') return false;
   const normalized = path.toLowerCase();

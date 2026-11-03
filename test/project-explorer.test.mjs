@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {buildFileTree, renderFileTree} from '../ui/shared/playground_file_tree.js';
 import {mountProjectExplorer, createExplorerClipboard} from '../ui/project-explorer.js';
 import {createProjectFiles} from '../ui/project-files.js';
+import {withGuide, guides} from '../ui/guide.js';
 
 test('FILES tree keeps explicitly empty folders alongside inferred folders and sorts folders first', () => {
   const tree = buildFileTree([
@@ -93,48 +94,102 @@ test('closing FILES actions while Stop is pending cannot delete a different newl
   } finally {restore();}
 });
 
-test('FILES rejects deleting or renaming the last runnable script without publishing the draft', async () => {
+test('FILES can rename or delete the last script and create a fresh script after clearing the folder', async () => {
   const {doc,restore}=setupDocument();
   try {
     const store=createProjectFiles({files:{'/last/lead.js':'play(60)', '/notes.txt':'notes', '/.git/refs/heads/branch.js':'metadata'}});
     const root=new Element('div'),newFileButton=new Element('button'),newFolderButton=new Element('button'),actionsButton=new Element('button'),importButton=new Element('button'),input=new Element('input');
-    let changes=0;
+    const changes=[];
     const explorer=mountProjectExplorer({root,newFileButton,newFolderButton,actionsButton,importButton,input,
-      getStore:()=>store,getFiles:()=>store.snapshot().files,getSelected:()=>'/last/lead.js',onOpen(){},beforeChange:async()=>{},onChanged:()=>{changes++;},
+      getStore:()=>store,getFiles:()=>store.snapshot().files,getSelected:()=>'/last/lead.js',onOpen(){},beforeChange:async()=>{},onChanged:detail=>changes.push(detail),
     });
     const menu=doc.body.children.find(element=>element.attributes.role==='menu'),dialog=doc.body.children.find(element=>element.tagName==='dialog'),form=descendants(dialog).find(element=>element.tagName==='form');
     const openAction=async(path,action)=>{
       root.emit('contextmenu',{preventDefault(){},target:{closest:()=>({dataset:{filePath:path}})}});
       await descendants(menu).find(element=>element.tagName==='button'&&element.textContent===action).onclick();
     };
-    const before=store.snapshot(), revision=store.revision;
-    for (const [path,action,destination] of [['/last/lead.js','Delete'],['/last/lead.js','Rename…','lead.txt'],['/last','Delete']]) {
-      await openAction(path,action);
-      if(destination)descendants(form).find(element=>element.tagName==='input').value=destination;
-      await form.onsubmit({preventDefault(){}});
-      assert.deepEqual(store.snapshot(),before);
-      assert.equal(store.revision,revision);
-      assert.equal(changes,0);
-      assert.equal(dialog.open,true);
-      assert.match(descendants(form).find(element=>element.attributes.role==='alert').textContent,/at least one JavaScript/);
-      dialog.close();
-    }
-    // A different JavaScript path remains playable; the guarded draft is then published once.
-    await openAction('/last/lead.js','Rename…');
-    descendants(form).find(element=>element.tagName==='input').value='renamed.mjs';
-    await form.onsubmit({preventDefault(){}});
-    assert.equal(store.snapshot().files['/last/renamed.mjs'],'play(60)');
-    assert.ok(!Object.hasOwn(store.snapshot().files,'/last/lead.js'));
-    assert.equal(changes,1);
-    assert.equal(dialog.open,false);
-    // Removing the old script is permitted after another ordinary script exists.
-    store.createFile('/another.js','play(62)');
-    await openAction('/last/renamed.mjs','Delete');
-    await form.onsubmit({preventDefault(){}});
-    assert.equal(store.snapshot().files['/another.js'],'play(62)');
-    assert.ok(!Object.hasOwn(store.snapshot().files,'/last/renamed.mjs'));
-    assert.equal(changes,2);
+    const pathInput=()=>descendants(form).find(element=>element.tagName==='input');
+    const submit=()=>form.onsubmit({preventDefault(){}});
+    await openAction('/last/lead.js','Rename…');pathInput().value='lead.txt';await submit();
+    assert.equal(store.snapshot().files['/last/lead.txt'],'play(60)');assert.equal(dialog.open,false);
+    assert.deepEqual(changes.at(-1),{from:'/last/lead.js',to:'/last/lead.txt',copy:false});
+    await openAction('/last/lead.txt','Rename…');pathInput().value='lead.js';await submit();
+    await openAction('/last/lead.js','Delete');await submit();
+    assert.equal(Object.hasOwn(store.snapshot().files,'/last/lead.js'),false);assert.equal(dialog.open,false);
+    await openAction('/last','Delete');await submit();
+    assert.equal(store.snapshot().directories.includes('/last'),false);
+    assert.equal(store.snapshot().files['/notes.txt'],'notes');
+    assert.equal(store.snapshot().files['/.git/refs/heads/branch.js'],'metadata');
+    newFileButton.onclick();pathInput().value='/fresh.js';await submit();
+    assert.equal(store.snapshot().files['/fresh.js'],'// MIDI Playground\n');
+    assert.deepEqual(changes.at(-1),{open:'/fresh.js'});assert.equal(changes.length,5);
     explorer.dispose();
+  } finally {restore();}
+});
+
+test('FILES can delete bundled guides through confirmation while their write and move actions remain disabled', async () => {
+  const {doc,restore}=setupDocument();
+  try {
+    const store=createProjectFiles({files:{'/index.js':'play(60)'}}),root=new Element('div'),changes=[],errors=[];
+    let selected='/sys/lib';const button=()=>new Element('button');
+    const explorer=mountProjectExplorer({root,newFileButton:button(),newFolderButton:button(),actionsButton:button(),importButton:button(),input:new Element('input'),
+      getStore:()=>store,getFiles:()=>withGuide(store.snapshot().files,store.snapshot().removedGuides),getSelected:()=>selected,onOpen(){},
+      beforeChange:async()=>{},onChanged:detail=>changes.push(detail),onError:error=>errors.push(error)});
+    const menu=doc.body.children.find(element=>element.attributes.role==='menu'),dialog=doc.body.children.find(element=>element.tagName==='dialog');
+    const form=descendants(dialog).find(element=>element.tagName==='form');
+    const open=path=>{selected=path;root.emit('contextmenu',{target:{closest:()=>({dataset:{filePath:path}})},preventDefault(){}});};
+    const action=name=>descendants(menu).find(element=>element.tagName==='button'&&element.textContent===name);
+    explorer.render();open('/sys/lib');
+    assert.equal(action('Copy Relative Path').disabled,false);
+    assert.equal(action('Delete').disabled,false);
+    for(const name of ['Copy','Paste','Cut','Rename…','New File…','New Folder…'])assert.equal(action(name).disabled,true,name);
+    const original=store.snapshot();
+    await action('Delete').onclick();assert.equal(dialog.open,true);
+    descendants(dialog).find(element=>element.tagName==='button'&&element.textContent==='Cancel').onclick();
+    assert.deepEqual(store.snapshot(),original);assert.equal(changes.length,0);
+    open('/sys/lib');await action('Delete').onclick();await form.onsubmit({preventDefault(){}});
+    assert.equal(dialog.open,false);assert.deepEqual(changes.at(-1),{removed:'/sys/lib'});
+    assert.deepEqual([...store.snapshot().removedGuides].sort(),Object.keys(guides).filter(path=>path.startsWith('/sys/lib/')).sort());
+    let visible=withGuide(store.snapshot().files,store.snapshot().removedGuides);
+    assert.equal(Object.keys(visible).some(path=>path.startsWith('/sys/lib/')),false);
+    assert.ok(Object.hasOwn(visible,'/sys/README.md'));
+    assert.equal(descendants(root).some(element=>element.dataset.filePath==='/sys/lib'),false);
+    open('/sys/README.md');assert.equal(action('Delete').disabled,false);
+    await action('Delete').onclick();await form.onsubmit({preventDefault(){}});
+    assert.ok(store.snapshot().removedGuides.includes('/sys/README.md'));
+    open('/sys');assert.equal(action('Delete').disabled,false);
+    await action('Delete').onclick();await form.onsubmit({preventDefault(){}});
+    assert.deepEqual([...store.snapshot().removedGuides].sort(),Object.keys(guides).sort());
+    assert.equal(descendants(root).some(element=>element.dataset.filePath==='/sys'),false);
+    assert.equal(store.snapshot().files['/index.js'],'play(60)');
+    assert.deepEqual(errors,[]);explorer.dispose();
+  } finally {restore();}
+});
+
+test('pending guide deletion is cancelled without publishing visibility changes after closing the dialog or replacing the project', async () => {
+  const {doc,restore}=setupDocument();
+  try {
+    for(const mode of ['cancel','replace']){
+      let store=createProjectFiles({files:{'/index.js':'original'}}),finishStop,changes=0;
+      store.remove('/sys/README.md');const original=store,before=store.snapshot(),root=new Element('div');
+      const button=()=>new Element('button');
+      const explorer=mountProjectExplorer({root,newFileButton:button(),newFolderButton:button(),actionsButton:button(),importButton:button(),input:new Element('input'),
+        getStore:()=>store,getFiles:()=>withGuide(store.snapshot().files,store.snapshot().removedGuides),getSelected:()=>'/sys',onOpen(){},
+        beforeChange:()=>new Promise(resolve=>{finishStop=resolve;}),onChanged:()=>changes++});
+      const menu=doc.body.children.filter(element=>element.attributes.role==='menu'&&!element.removed).at(-1),dialog=doc.body.children.filter(element=>element.tagName==='dialog'&&!element.removed).at(-1);
+      const form=descendants(dialog).find(element=>element.tagName==='form');
+      root.emit('contextmenu',{target:{closest:()=>({dataset:{filePath:'/sys'}})},preventDefault(){}});
+      await descendants(menu).find(element=>element.tagName==='button'&&element.textContent==='Delete').onclick();
+      const pending=form.onsubmit({preventDefault(){}});assert.equal(typeof finishStop,'function');
+      if(mode==='cancel')dialog.close();else store=createProjectFiles({files:{'/fresh.js':'fresh'}});
+      finishStop();await pending;
+      assert.deepEqual(original.snapshot(),before);assert.equal(changes,0);
+      if(mode==='replace'){
+        assert.equal(store.snapshot().removedGuides,undefined);
+        assert.ok(Object.hasOwn(withGuide(store.snapshot().files,store.snapshot().removedGuides),'/sys/README.md'));
+      }
+      explorer.dispose();
+    }
   } finally {restore();}
 });
 

@@ -4,6 +4,7 @@ import {exportProject,importProject,MAX_PROJECT_BYTES} from '../ui/project-casse
 import {zipSync,unzipSync,strToU8} from '../ui/vendor/fflate.js';
 import {prepareModules} from '../ui/modules.js';
 import {binaryFile} from '../ui/project-assets.js';
+import {guides, withGuide} from '../ui/guide.js';
 
 const project=()=>({files:{'/index.js':'const p = await import("./lib/phrase.js"); log(p.value);','/lib/phrase.js':'export const value="音楽 🎵";','/notes.md':'My notes','/README.md':'project README','/lib/README.md':'project library README','/sys/README.md':'bundled guide'},runPath:'/index.js',selected:'/lib/phrase.js',bpm:135,clockMode:'internal'});
 const pack=entries=>zipSync(Object.fromEntries(Object.entries(entries).map(([k,v])=>[k,strToU8(v)])));
@@ -107,4 +108,134 @@ test('Git internals cannot become the Run file or viewed editor after cassette i
  const loaded=importProject(exportProject(source));
  assert.equal(loaded.selected,source.runPath);
  assert.throws(()=>exportProject({...source,runPath:'/.git/hooks/demo.js'}),/Run file/);
+});
+
+test('an explicitly empty workspace round-trips without recreating an entry script',()=>{
+ const source={files:{},directories:[],runPath:'',selected:'/sys/README.md',bpm:120,clockMode:'internal'};
+ const bytes=exportProject(source),entries=unzipSync(bytes);
+ assert.deepEqual(Object.keys(entries),['metadata.json']);
+ const metadata=JSON.parse(new TextDecoder().decode(entries['metadata.json']));
+ assert.equal(metadata.version,3);
+ assert.deepEqual(metadata.directories,[]);
+ assert.deepEqual(importProject(bytes),source);
+ assert.deepEqual(importProject(exportProject(importProject(bytes))),source);
+ const {directories,...withoutDirectories}=source;
+ assert.deepEqual(importProject(exportProject(withoutDirectories)),source);
+ const guidesOnly={...withoutDirectories,files:{'/sys/README.md':'bundled guide'},selected:'/gone.js'};
+ assert.deepEqual(importProject(exportProject(guidesOnly)),source);
+});
+
+test('work in progress without JavaScript preserves notes, binary assets, Git and empty folders',()=>{
+ const source={files:{'/notes.md':'Start here','/bell.tfi':binaryFile([0,255,128]),'/.git/hooks/prepare.js':'internal metadata'},directories:['/drafts/empty'],runPath:'',selected:'/notes.md',bpm:135,clockMode:'external'};
+ const loaded=importProject(exportProject(source));
+ assert.deepEqual(loaded.files,source.files);
+ assert.equal(loaded.selected,'/notes.md');
+ assert.equal(loaded.runPath,'');
+ assert.ok(loaded.directories.includes('/drafts/empty'));
+ assert.deepEqual(importProject(exportProject(loaded)),loaded);
+ for(const selected of ['/missing.js','/.git/hooks/prepare.js','/sys/not-a-guide.md','']) {
+  assert.equal(importProject(exportProject({...source,selected})).selected,'/sys/README.md');
+ }
+});
+
+test('empty Run target is accepted only without an ordinary runnable script',()=>{
+ const empty={files:{'/notes.md':'Work in progress','/.git/hooks/demo.js':'metadata'},runPath:'',selected:'/notes.md',bpm:120,clockMode:'internal'};
+ assert.equal(importProject(exportProject(empty)).runPath,'');
+ for(const runPath of [undefined,null,'/missing.js','/notes.md','/.git/hooks/demo.js']) {
+  assert.throws(()=>exportProject({...empty,runPath}),/Run file/);
+ }
+ for(const path of ['/index.js','/lib/voice.mjs']) {
+  const runnable={...empty,files:{...empty.files,[path]:'log(1)'}};
+  for(const runPath of ['',undefined,null,'/missing.js','/notes.md','/.git/hooks/demo.js']) {
+   assert.throws(()=>exportProject({...runnable,runPath}),/Run file/);
+  }
+  assert.equal(importProject(exportProject({...runnable,runPath:path})).runPath,path);
+ }
+});
+
+test('all supported cassette versions can restore a no-script workspace and reject stale Run targets',()=>{
+ for(const version of [1,2,3]) {
+  const metadata={format:'tetorica-midi-playground',version,binaryPaths:[],...(version===3?{directories:['/empty']}:{}),runPath:'',selected:'/missing.js',bpm:120,clockMode:'internal'};
+  const entries={'notes.md':strToU8('not yet a performance'),'metadata.json':strToU8(JSON.stringify(metadata))};
+  const restored=importProject(zipSync(entries));
+  assert.deepEqual(restored.files,{'/notes.md':'not yet a performance'});
+  assert.equal(restored.runPath,'');
+  assert.equal(restored.selected,'/sys/README.md');
+  for(const runPath of ['/old.js','/notes.md',null]) {
+   assert.throws(()=>importProject(zipSync({...entries,'metadata.json':strToU8(JSON.stringify({...metadata,runPath}))})),/Run file/);
+  }
+ }
+});
+
+test('deleted bundled guides round-trip without guide payloads or selecting a removed guide',()=>{
+ const source={...project(),directories:[],removedGuides:['/sys/README_jp.md'],selected:'/sys/README_jp.md'};
+ const bytes=exportProject(source),entries=unzipSync(bytes);
+ const metadata=JSON.parse(new TextDecoder().decode(entries['metadata.json']));
+ assert.equal(metadata.version,3);
+ assert.deepEqual(metadata.removedGuides,source.removedGuides);
+ assert.ok(Object.keys(entries).every(path=>!path.startsWith('sys/')));
+ const loaded=importProject(bytes);
+ assert.deepEqual(loaded.removedGuides,source.removedGuides);
+ assert.equal(loaded.selected,source.runPath);
+ assert.ok(!Object.hasOwn(withGuide(loaded.files,loaded.removedGuides),'/sys/README_jp.md'));
+ assert.ok(Object.hasOwn(withGuide(loaded.files,loaded.removedGuides),'/sys/README.md'));
+ assert.deepEqual(importProject(exportProject(loaded)),loaded);
+ for(const selected of ['/sys/README.md','/notes.md','/README.md']) {
+  assert.equal(importProject(exportProject({...source,selected})).selected,selected);
+ }
+});
+
+test('all deleted guides preserve a truly empty workspace and ordinary no-script selections',()=>{
+ const removedGuides=Object.keys(guides);
+ const empty={files:{},directories:[],runPath:'',selected:'',bpm:120,clockMode:'internal',removedGuides};
+ const bytes=exportProject(empty);
+ assert.deepEqual(Object.keys(unzipSync(bytes)),['metadata.json']);
+ assert.deepEqual(importProject(bytes),empty);
+ assert.deepEqual(importProject(exportProject(importProject(bytes))),empty);
+ for(const selected of ['/sys/README.md','/README.md','/missing.js','/.git/HEAD']) {
+  assert.deepEqual(importProject(exportProject({...empty,selected})),empty);
+ }
+ const notes={...empty,files:{'/notes.md':'Start a new project','/.git/HEAD':'ref: refs/heads/main\n'}};
+ for(const selected of ['', '/sys/README.md','/missing.js']) {
+  const loaded=importProject(exportProject({...notes,selected}));
+  assert.equal(loaded.selected,'/notes.md');
+  assert.deepEqual(loaded.removedGuides,removedGuides);
+ }
+ const onlyGit={...empty,files:{'/.git/HEAD':'ref: refs/heads/main\n'}};
+ assert.equal(importProject(exportProject(onlyGit)).selected,'');
+});
+
+test('partial guide deletion falls back only to visible guides and never revives legacy selections',()=>{
+ const source={files:{},runPath:'',selected:'/README.md',bpm:120,clockMode:'internal',removedGuides:['/sys/README.md']};
+ const loaded=importProject(exportProject(source));
+ assert.equal(loaded.selected,'/sys/README_jp.md');
+ assert.deepEqual(loaded.removedGuides,source.removedGuides);
+ assert.deepEqual(loaded.directories,[]);
+ const projectReadme={...source,files:{'/README.md':'actual editable README'}};
+ assert.equal(importProject(exportProject(projectReadme)).selected,'/README.md');
+ const staleGuide={...source,files:{'/sys/README.md':'obsolete bundled bytes'}};
+ assert.deepEqual(importProject(exportProject(staleGuide)),loaded);
+});
+
+test('malformed removed-guide metadata is rejected before cassette replacement',()=>{
+ const source=project();
+ const entries=unzipSync(exportProject(source));
+ const metadata=JSON.parse(new TextDecoder().decode(entries['metadata.json']));
+ for(const removedGuides of [null,{},'/sys/README.md',[42],['/sys'],['/sys/unknown.md'],['/SYS/README.md'],['/sys/README.md','/sys/README.md']]) {
+  assert.throws(()=>exportProject({...source,removedGuides}),/guide/i);
+  const bytes=zipSync({...entries,'metadata.json':strToU8(JSON.stringify({...metadata,removedGuides}))});
+  assert.throws(()=>importProject(bytes),/guide/i);
+ }
+ const loaded=importProject(exportProject({...source,removedGuides:[]}));
+ assert.ok(!Object.hasOwn(loaded,'removedGuides'));
+});
+
+test('legacy cassette versions keep all bundled guides visible without introducing metadata',()=>{
+ for(const version of [1,2,3]) {
+  const metadata={format:'tetorica-midi-playground',version,binaryPaths:[],...(version===3?{directories:[]}:{}),runPath:'',selected:'/README_jp.md',bpm:120,clockMode:'internal'};
+  const loaded=importProject(pack({'metadata.json':JSON.stringify(metadata)}));
+  assert.equal(loaded.selected,'/sys/README_jp.md');
+  assert.ok(!Object.hasOwn(loaded,'removedGuides'));
+  assert.deepEqual(Object.keys(withGuide(loaded.files,loaded.removedGuides)),Object.keys(guides));
+ }
 });

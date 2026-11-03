@@ -4,6 +4,7 @@ import {inflateSync, deflateSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {createProjectFiles} from '../ui/project-files.js';
 import {createProjectGit} from '../ui/project-git.js';
+import {createProjectShell} from '../ui/project-shell.js';
 import {binaryFile} from '../ui/project-assets.js';
 
 const author = {name: 'Fixture', email: 'fixture@example.invalid'};
@@ -43,11 +44,11 @@ function packFrom(store) {
   const bytes = Buffer.concat(chunks);
   return Buffer.concat([bytes, createHash('sha1').update(bytes).digest()]);
 }
-function upload(store, oid, hooks = {}) {
+function upload(store, oid, hooks = {}, branch = 'main') {
   const pack = packFrom(store);
   return {async request({url, method = 'GET', signal}) {
     signal?.throwIfAborted(); await hooks.beforeRequest?.(method); signal?.throwIfAborted();
-    if (method === 'GET') return {url, statusCode: 200, statusMessage: 'OK', headers: {'content-type': 'application/x-git-upload-pack-advertisement'}, body: [packet('# service=git-upload-pack\n'), flush, packet(`${oid} HEAD\0multi_ack_detailed side-band-64k ofs-delta symref=HEAD:refs/heads/main\n`), packet(`${oid} refs/heads/main\n`), flush]};
+    if (method === 'GET') return {url, statusCode: 200, statusMessage: 'OK', headers: {'content-type': 'application/x-git-upload-pack-advertisement'}, body: [packet('# service=git-upload-pack\n'), flush, packet(`${oid} HEAD\0multi_ack_detailed side-band-64k ofs-delta symref=HEAD:refs/heads/${branch}\n`), packet(`${oid} refs/heads/${branch}\n`), flush]};
     return {url, statusCode: 200, statusMessage: 'OK', headers: {'content-type': 'application/x-git-upload-pack-result'}, body: [packet('NAK\n'), packet(Buffer.concat([Buffer.from([1]), pack])), flush]};
   }};
 }
@@ -146,4 +147,79 @@ test('an editor change or cancellation during HTTP cannot publish downloaded Git
     const before = local.snapshot(); release(); await assert.rejects(pending);
     assert.deepEqual(local.snapshot(), before); assert.equal(closed, 1);
   }
+});
+
+test('clone replaces FILES atomically, decodes source text, retains full history and resets Shell cwd', async () => {
+  const remote = create(); await initial(remote);
+  remote.write('/index.js', '\uFEFFplay("E4");\n');
+  remote.createFile('/voices/bell.tfi', binaryFile([0, 12, 255, 9]));
+  const oid = await commit(repo(remote), 'Second');
+  for (const explicitBranch of [false, true]) {
+    const local = create(); local.createFile('/old/local-only.txt', 'Keep until clone succeeds');
+    const scopes = [], publications = []; let closed = 0;
+    const git = repo(local, {onChanged:(snapshot,detail)=>publications.push({snapshot,detail}),beginRemote: async request => {
+      scopes.push(request);
+      return {http: upload(remote, oid, {}, 'trunk'), close: async () => { closed++; }};
+    }});
+    const shell = createProjectShell({getStore: () => local, git: () => git});
+    assert.equal((await shell.execute('cd old')).code, 0);
+    const plainBefore = local.snapshot();
+    const plain = await shell.execute('git clone https://example.invalid/clone .');
+    assert.notEqual(plain.code, 0); assert.equal(scopes.length, 0); assert.deepEqual(local.snapshot(), plainBefore);
+    const nested = await shell.execute('git clone --replace https://example.invalid/clone .');
+    assert.notEqual(nested.code, 0); assert.equal(scopes.length, 0); assert.deepEqual(local.snapshot(), plainBefore);
+    const result = await shell.execute(`git clone --replace ${explicitBranch ? '-b trunk ' : ''}https://example.invalid/clone`);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(shell.cwd, '/');
+    assert.equal(local.snapshot().files['/index.js'], '\uFEFFplay("E4");\n');
+    assert.deepEqual(local.snapshot().files['/voices/bell.tfi'], binaryFile([0, 12, 255, 9]));
+    assert.equal(Object.hasOwn(local.snapshot().files, '/old/local-only.txt'), false);
+    assert.equal((await git.execute('status')).branch, 'trunk');
+    assert.deepEqual((await git.execute('status')).files, []);
+    assert.deepEqual((await git.execute('log')).map(value => value.id), (await repo(remote).execute('log')).map(value => value.id));
+    assert.deepEqual(await git.execute('remote'), [{remote: 'origin', url: 'https://example.invalid/clone.git'}]);
+    assert.deepEqual(scopes, [{url: 'https://example.invalid/clone.git', operation: 'clone', branch: explicitBranch ? 'trunk' : '', commit: ''}]);
+    const clonePublications=publications.filter(value=>value.detail.action==='clone');
+    assert.equal(clonePublications.length,1);
+    assert.equal(clonePublications[0].detail.result.operation,'clone');
+    assert.equal(clonePublications[0].snapshot.files['/index.js'],'\uFEFFplay("E4");\n');
+    assert.equal(closed, 1);
+  }
+});
+
+test('failed clone, rejected project content and cancellation during HTTP preserve the previous project', async () => {
+  const remote = create(); const oid = await initial(remote);
+  for (const mode of ['network', 'content', 'edit', 'abort']) {
+    const local = create(); await initial(local);
+    const abort = new AbortController(); let entered, release, closed = 0;
+    const started = new Promise(resolve => { entered = resolve; });
+    const git = repo(local, {
+      validateReplacement() { if (mode === 'content') throw Error('Remote project needs JavaScript'); },
+      beginRemote: async () => ({close: async () => { closed++; }, http: mode === 'network' ? {request() { throw Error('Fixture connection failed'); }} : upload(remote, oid, {async beforeRequest(method) {
+        if (method === 'POST' && ['edit', 'abort'].includes(mode)) { entered(); await new Promise(resolve => { release = resolve; }); }
+      }})}),
+    });
+    const before = local.snapshot();
+    const pending = git.execute('clone', {url: 'https://example.invalid/clone', replace: true}, {signal: abort.signal});
+    if (mode === 'edit' || mode === 'abort') {
+      await started;
+      if (mode === 'edit') local.write('/index.js', 'newer editor work\n'); else abort.abort();
+      const current = local.snapshot(); release(); await assert.rejects(pending);
+      assert.deepEqual(local.snapshot(), current);
+    } else { await assert.rejects(pending, /Fixture connection failed|Remote project needs JavaScript/); assert.deepEqual(local.snapshot(), before); }
+    assert.equal(closed, 1);
+  }
+});
+
+test('project replacement while clone approval is pending closes the session without sending requests', async () => {
+  let local = create(), entered, approve, requests = 0, closed = 0;
+  const started = new Promise(resolve => { entered = resolve; });
+  const git = createProjectGit({getStore: () => local, beginRemote: async () => {
+    entered(); await new Promise(resolve => { approve = resolve; });
+    return {close: async () => { closed++; }, http: {request() { requests++; throw Error('Must not request'); }}};
+  }});
+  const pending = git.execute('clone', {url: 'https://example.invalid/clone', replace: true});
+  await started; local = create(); const before = local.snapshot(); approve();
+  await assert.rejects(pending, /Project changed/);
+  assert.equal(requests, 0); assert.equal(closed, 1); assert.deepEqual(local.snapshot(), before);
 });

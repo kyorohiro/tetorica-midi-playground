@@ -66,6 +66,7 @@ impl Transport {
 pub struct Begin {
     url: String,
     operation: String,
+    #[serde(default)]
     branch: String,
     commit: String,
 }
@@ -177,6 +178,23 @@ fn valid_branch(branch: &str) -> bool {
             .split('/')
             .all(|part| !part.is_empty() && !part.starts_with('.') && !part.ends_with(".lock"))
 }
+fn validate_begin(request: &Begin) -> Result<()> {
+    if !["push", "fetch", "pull", "clone"].contains(&request.operation.as_str()) {
+        return Err("Unsupported remote operation".into());
+    }
+    let default_clone_branch = request.operation == "clone" && request.branch.is_empty();
+    if (!default_clone_branch && !valid_branch(&request.branch))
+        || request.commit.len() > 64
+        || !request.commit.bytes().all(|b| b.is_ascii_hexdigit())
+        || (request.operation == "clone" && !request.commit.is_empty())
+    {
+        return Err("Invalid branch or commit".into());
+    }
+    if request.operation == "push" && request.commit.len() != 40 {
+        return Err("Commit changes before pushing".into());
+    }
+    Ok(())
+}
 fn validate_headers(headers: &BTreeMap<String, String>) -> Result<()> {
     for (name, value) in headers {
         if !["content-type", "accept", "git-protocol"].contains(&name.to_ascii_lowercase().as_str())
@@ -207,24 +225,18 @@ pub async fn git_https_begin(
 ) -> Result<String> {
     super::allowed(&window)?;
     let repository = repository_url(&request.url)?;
-    if !["push", "fetch", "pull"].contains(&request.operation.as_str()) {
-        return Err("Unsupported remote operation".into());
-    }
-    if !valid_branch(&request.branch)
-        || request.commit.len() > 64
-        || !request.commit.bytes().all(|b| b.is_ascii_hexdigit())
-    {
-        return Err("Invalid branch or commit".into());
-    }
-    if request.operation == "push" && request.commit.len() != 40 {
-        return Err("Commit changes before pushing".into());
-    }
+    validate_begin(&request)?;
     let generation = state.generation();
     // No credential value is accepted as a command argument.
     let operation = request.operation.clone();
     let url = request.url.clone();
     let branch = request.branch.clone();
     let commit = request.commit.clone();
+    let display_branch = if branch.is_empty() {
+        "Remote default (HEAD)".into()
+    } else {
+        branch.clone()
+    };
     let (token, token_id) = tauri::async_runtime::spawn_blocking(move || -> Result<(Zeroizing<String>, String)> {
         let state = app.state::<crate::git_tokens::Tokens>();
         let (entries, preferred) = state.0.lock().map_err(|e| e.to_string())?.available_choices(&url)?;
@@ -232,14 +244,14 @@ pub async fn git_https_begin(
             if operation == "push" {
                 return Err("No saved token for this host. Register one in Menu → Git settings before pushing".into());
             }
-            crate::git_dialog::confirm(&app, "Tetorica MIDI Playground — Confirm Git connection", &format!("Operation: {operation}\nDestination: {url}\nBranch: {}\n\nNo saved token matches this host. Continue without authentication? Public repositories may allow this.", request.branch))?;
+            crate::git_dialog::confirm(&app, "Tetorica MIDI Playground — Confirm Git connection", &format!("Operation: {operation}\nDestination: {url}\nBranch: {display_branch}\n\nNo saved token matches this host. Continue without authentication? Public repositories may allow this."))?;
             return Ok((Zeroizing::new(String::new()), String::new()));
         }
         let index = preferred.as_ref().and_then(|id| entries.iter().position(|entry| &entry.id == id)).unwrap_or(0);
         let description = if operation == "push" {
             format!("Destination: {}\nBranch: {}\nCommit: {}\n\nSelect a token to use.", url, request.branch, request.commit)
         } else {
-            format!("Operation: {}\nDestination: {}\n\nSelect a token to use.", operation, url)
+            format!("Operation: {operation}\nDestination: {url}\nBranch: {display_branch}\n\nSelect a token to use.")
         };
         let selected = crate::git_dialog::choose_token(&app, description, entries.iter().map(|entry| entry.name.clone()).collect(), index)?;
         let mut store = state.0.lock().map_err(|e| e.to_string())?;
@@ -413,6 +425,41 @@ mod tests {
         assert!(serde_json::from_value::<Request>(serde_json::json!({"session":"session", "url":"https://github.com/owner/repository.git", "method":"GET", "headers":{}, "body":"", "password":"supplied-by-js"})).is_err());
     }
     #[test]
+    fn clone_accepts_remote_default_or_valid_explicit_branch_but_no_commit() {
+        let mut request: Begin = serde_json::from_value(serde_json::json!({
+            "url": "https://github.com/owner/repository.git",
+            "operation": "clone",
+            "commit": ""
+        }))
+        .unwrap();
+        assert!(request.branch.is_empty());
+        assert!(validate_begin(&request).is_ok());
+        request.branch = "feature/pcm".into();
+        assert!(validate_begin(&request).is_ok());
+        for branch in ["-main", "../main", "main@{0}", "main with space"] {
+            request.branch = branch.into();
+            assert!(validate_begin(&request).is_err(), "{branch}");
+        }
+        request.branch.clear();
+        request.commit = "a".repeat(40);
+        assert!(validate_begin(&request).is_err());
+        request.commit.clear();
+        for operation in ["fetch", "pull", "push", "receive-pack"] {
+            request.operation = operation.into();
+            assert!(validate_begin(&request).is_err(), "{operation}");
+        }
+        request.operation = "push".into();
+        request.branch = "main".into();
+        assert!(validate_begin(&request).is_err());
+        request.commit = "a".repeat(40);
+        assert!(validate_begin(&request).is_ok());
+        for operation in ["fetch", "pull"] {
+            request.operation = operation.into();
+            request.commit.clear();
+            assert!(validate_begin(&request).is_ok());
+        }
+    }
+    #[test]
     fn native_branch_validation_rejects_ambiguous_refs() {
         for branch in ["main", "feature/pcm", "release-2026.11"] {
             assert!(valid_branch(branch), "{branch}");
@@ -508,6 +555,64 @@ mod tests {
         }
         assert!(repository_url("http://github.com/owner/repository.git").is_err());
         assert!(repository_url("https://token@github.com/owner/repository.git").is_err());
+    }
+    #[test]
+    fn clone_transport_only_reads_the_approved_repository() {
+        let repo = repository_url("https://github.com/owner/repository.git").unwrap();
+        for (url, method) in [
+            (
+                "https://github.com/owner/repository.git/info/refs?service=git-upload-pack",
+                "GET",
+            ),
+            (
+                "https://github.com/owner/repository.git/git-upload-pack",
+                "POST",
+            ),
+        ] {
+            assert!(endpoint(&repo, "clone", url, method).is_ok(), "{url}");
+        }
+        for (url, method) in [
+            (
+                "https://github.com/owner/repository.git/info/refs?service=git-receive-pack",
+                "GET",
+            ),
+            (
+                "https://github.com/owner/repository.git/git-receive-pack",
+                "POST",
+            ),
+            (
+                "https://github.com/other/repository.git/git-upload-pack",
+                "POST",
+            ),
+            (
+                "https://evil.example/owner/repository.git/git-upload-pack",
+                "POST",
+            ),
+            (
+                "https://github.com/owner/repository.git/git-upload-pack",
+                "PUT",
+            ),
+        ] {
+            assert!(endpoint(&repo, "clone", url, method).is_err(), "{url}");
+        }
+    }
+    #[test]
+    fn clearing_or_revoking_clone_authentication_prevents_late_session_install() {
+        for revoke in [false, true] {
+            let transport = Transport::default();
+            let pending = transport.generation();
+            let mut session = fake_session();
+            session.operation = "clone".into();
+            session.branch.clear();
+            session.commit.clear();
+            if revoke {
+                transport.revoke_token("saved-token").unwrap();
+            } else {
+                transport.clear().unwrap();
+            }
+            assert!(transport.install(pending, session).is_err());
+            assert!(transport.0.lock().unwrap().is_none());
+        }
     }
     #[test]
     fn push_packet_must_match_reviewed_branch_and_commit() {

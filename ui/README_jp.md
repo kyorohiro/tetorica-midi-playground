@@ -74,9 +74,9 @@ GarageBandの仮想入力がある場合、この設定は不要です。
 
 **Menu → Export project**でファイル名を入力し、`my-project.midi.cassette.zip`のような名前で保存できます。拡張子は自動で付きます。最後に使った名前は次回も候補になります。FILES内のコード・ライブラリ・メモをフォルダ構造ごとZIPに保存します。Run file、開いているファイル、BPM、Beat clockも含まれます。**Menu → Import project**でZIPを選ぶと、ファイル数・Run file・BPMを確認できます。必要なら**Export current project**でバックアップしてから、**Replace project**で置き換えます。キャンセルすれば変更されません。読み込み時は演奏を停止し、自動実行しません。復元したファイルと設定はアプリ再起動後も保持されます。
 
-**Menu → New Project**で、現在のコードを整理して最初から始められます。確認後は既定のleadループを含む`/index.js`と同梱examples・libに戻り、BPM 120・Internal clockになります。演奏と実行中の`context`は終了し、古いファイルやUndo履歴は残りません。新しい状態は再起動後も保持されます。確認画面から現在のプロジェクトをExportしてから作成することもできます。MIDI接続・割り当てや音源設定は引き続き機器側の設定として保持されます。単体ファイルの保存は**Menu → Export file**です。
+**Menu → New Project**で、現在のコードを整理して最初から始められます。確認後は既定のleadループを含む`/index.js`と同梱examples・libに戻り、削除した`/sys`ガイドも復元します。BPM 120・Internal clockになり、演奏と実行中の`context`は終了し、古いファイルやUndo履歴は残りません。新しい状態は再起動後も保持されます。確認画面から現在のプロジェクトをExportしてから作成することもできます。MIDI接続・割り当てや音源設定は引き続き機器側の設定として保持されます。単体ファイルの保存は**Menu → Export file**です。
 
-ZIPはMIDI Playground専用のプロジェクト形式です。YM2612 Playgroundの音色・サンプル入りカセットとの直接互換ではありません。同梱の読取専用ガイドはアプリ側から再生成します。MIDI機器の接続・出力割り当て、音源・Mixer設定、実行中の`context`は含みません。ZIP・展開後それぞれ16 MiB、メタデータを含め1024ファイルまでです。
+ZIPはMIDI Playground専用のプロジェクト形式です。YM2612 Playgroundの音色・サンプル入りカセットとの直接互換ではありません。同梱の読取専用ガイド本文はアプリから取得し、どのガイドを削除したかはカセットに保存・復元します。MIDI機器の接続・出力割り当て、音源・Mixer設定、実行中の`context`は含みません。ZIP・展開後それぞれ16 MiB、メタデータを含め1024ファイルまでです。
 
 ## 音が鳴らないとき
 
@@ -405,9 +405,9 @@ await lead.play("C4", {duration: 1, velocity: 100});
 
 **Copy**はファイル・フォルダーのテキストとバイナリを、その時点の内容で保持します。コピー後に元を編集してもPasteはコピー時の内容を使い、同名の項目があれば`bass-copy.js`、`bass-copy-2.js`のような空いている名前を付けます。**Cut / Paste**は現在の元データを移動し、同名の移動先がある場合はエラーにします。**Copy Relative Path**はプロジェクトルートからの相対パスをコピーします。ImportはJS・テキスト／JSON・TFI／VGIの複数ファイルを現在のフォルダーへ取り込み、同名パスは上書きしません。構造変更時は演奏を停止します。
 
-移動するとRun fileと表示ファイルも追従します。無変更ファイルのUndoは保持し、移動したファイルはカーソル・表示位置を引き継ぎますが、モデルとUndo履歴は新しくなります。コード内の相対importや`loadVoice()`の文字列は自動変更しないため、移動後に見直してください。同梱ガイドと`.git`は保護され、実行可能なJSを最低1つ残す必要があります。削除・移動した同梱exampleは再起動しても復活しません。
+移動するとRun fileと表示ファイルも追従します。無変更ファイルのUndoは保持し、移動したファイルはカーソル・表示位置を引き継ぎますが、モデルとUndo履歴は新しくなります。コード内の相対importや`loadVoice()`の文字列は自動変更しないため、移動後に見直してください。同梱`/sys`ガイドは読取専用ですが、**Delete**で個別ファイル・フォルダー・`sys`全体を削除できます。削除状態は再起動・カセットのExport／Import後も保持し、**New Project**でガイドを復元します。`.git`はGitコマンドで管理します。JSがない状態や空のプロジェクトも保存でき、JSを作成・取り込むまではRun／Applyを無効にします。削除・移動した同梱exampleは再起動しても復活しません。
 
-**Menu → Git…**では、このプロジェクトのローカルGitを操作できます。Initialize → 差分確認 → Stage → 作者名・メール・messageを入力 → Commitの順で保存し、Historyで履歴を読めます。ファイルごとのStage／Diffもあります。Branchは現在のcommitを指すブランチの作成のみで、ブランチ切り替えは未対応です。HTTPS remoteの操作は下記を参照してください。対象は仮想FILESで、Mac上の実リポジトリを操作する機能ではありません。
+Git操作は**Shell**で行います。`git init`で初期化し、`git status`・`git diff`で確認、`git add PATH`でStage、`git diff --cached`で確認、`git commit -m "Message"`で保存、`git log`で履歴を表示します。作者は最初のcommit前に`git config user.name "Name"`・`git config user.email "you@example.com"`で設定し、以後は再利用します。`git branch NAME`は現在のcommitを指すブランチの作成のみで、切り替えは未対応です。対象は仮想FILESで、Mac上の実リポジトリを操作する機能ではありません。**Menu → Git settings…**はFM2612版と同じ、保存済みトークンの設定だけです。HTTPS remoteのコマンドは下記を参照してください。
 
 Git履歴・バイナリ音色・空フォルダーは自動保存とカセットのExport／Importに含まれます。`.git`はFILESに表示せず、演奏Workerにも渡しません。Git更新前にファイル本体の16 MiB／1024ファイル上限を検証します。Export時にはメタデータ・ZIPの追加分も含めた上限を確認します。アプリ外にもバックアップを残すにはExport projectを使ってください。New Projectではファイルと一緒にGit履歴も置き換わります。Git操作だけでコードが実行されることはありません。
 
@@ -445,7 +445,7 @@ liveLoop("sweep", async ({noteOn, noteOff, pitchBend, tween, beat}) => {
 
 ## Shell
 
-**Shell**タブでは、エディターと同じFILES・Gitをコマンドで操作できます。出力と入力プロンプトを同じターミナルに表示し、1コマンドずつ入力してEnter、↑／↓で履歴を使います。タブ列の**⋯ → Clear output**で表示中のShellまたはConsoleを消せます。ShellではCtrl+Lでも表示を消せます。実行中だけタブ横に**Stop**を表示し、文字を選択していない状態のCtrl+Cでもコマンドを中断できます。**?**でShellの操作説明を開きます。
+**Shell**タブでは、エディターと同じFILES・Gitをコマンドで操作できます。出力と入力プロンプトを同じターミナルに表示し、1コマンドずつ入力してEnter、↑／↓で履歴を使います。タブ列の**⋯ → Clear output**で表示中のShellまたはConsoleを消せます。ShellではCtrl+Lでも表示を消せます。実行中だけタブ横に**Stop**を表示し、文字を選択していない状態のCtrl+Cでもコマンドを中断できます。**?**でShellの操作説明を開きます。 TabでFILESのパスを補完し、複数候補は一覧で表示します。Ctrl+A／Eは行頭／行末、Ctrl+B／Fは1文字移動、Ctrl+U／Kはカーソル前／後の削除、Ctrl+Wは直前の単語削除です。Cmd系のショートカットとIME入力は通常どおり使えます。
 
 ```text
 pwd
@@ -458,13 +458,17 @@ mv parts/notes.js parts/phrase.js
 
 `help`／`help COMMAND`で対応する書式を確認できます。移動・一覧・読み取り・検索、リダイレクトなしのechoでは演奏を止めません。ファイルを変更するコマンドは演奏を止め、エディター・選択・Run fileへ反映します。失敗したコマンド／パイプの変更は部分反映しません。同時編集・New／Import・中断時も、古い内容を書き戻さないよう検証します。パイプと`<`・`>`・`>>`に対応し、Gitはパイプやリダイレクトと分けて実行します。
 
-対象は仮想プロジェクト内のFILESです。OSコマンド、パッケージ導入、任意JavaScriptの実行、コマンド連結・変数展開は扱いません。Shellのsnapshot／undo／diffは公開せず、履歴はGitを使います。同梱ガイドは保護された`/sys/`へ移し、プロジェクト保存から除外しました。プロジェクトの`README.md`・`lib/README.md`は編集・Git管理できます。`.git`は通常操作から隠し、Gitだけで管理します。
+対象は仮想プロジェクト内のFILESです。OSコマンド、パッケージ導入、任意JavaScriptの実行、コマンド連結・変数展開は扱いません。Shellのsnapshot／undo／diffは公開せず、履歴はGitを使います。同梱ガイドは読取専用の`/sys/`に置き、本文はアプリから取得し、削除状態はプロジェクトに保存します。プロジェクトの`README.md`・`lib/README.md`は編集・Git管理できます。`.git`は通常操作から隠し、Gitだけで管理します。
+
+FILESルートで`rm -rf sys`を実行すると同梱ガイドを削除できます。`rm -r /sys`も使えます。`rm /sys/README.md`や`rm -r /sys/lib`で一部だけを削除することもできます。削除するまでは読取専用です。
+
+`rm -rf .`で現在の仮想ディレクトリーを削除できます。FILESルートでは`/sys`ガイドとGit履歴を含むFILES全体を空にします。アプリの保存済みトークンは保持し、ホストのファイルは操作しません。`-r`・`-R`・`--recursive`・`-f`・`--force`、`-rf`等の組合せと`--`に対応します。空の状態も保存・Export・再読込でき、新しいファイルの作成や、`--replace`なしの`git clone HTTPS_URL .`へ進めます。clone後も削除したガイドは復活せず、**New Project**で復元できます。この削除を自動で戻すUndoはないため、残したい内容は先にカセットへExportしてください。
 
 ## GitHubとHTTPS remote
 
-まずGitHubで**空のリポジトリ**を作ります（READMEや初期commitなし）。**Menu → Git…**でtokenの名前とhost（`https://github.com`）を入力して**Add token…**を押し、PAT本体はNative画面へ入力します。対象リポジトリへ必要な読み書き権限を持つPATを使ってください。秘密はOS資格情報ストアへ保存し、FM2612版とは保存領域を分けています。JavaScript・FILES・ログ・カセットへPAT本文は渡しません。登録済みtokenの選択・削除もでき、Nativeの接続画面では前回選択を候補にします。
+まずGitHubで**空のリポジトリ**を作ります（READMEや初期commitなし）。**Menu → Git settings…**でtokenの名前とhost（`https://github.com`）を入力して**Add token…**を押し、PAT本体はNative画面へ入力します。対象リポジトリへ必要な読み書き権限を持つPATを使ってください。秘密はOS資格情報ストアへ保存し、FM2612版とは保存領域を分けています。JavaScript・FILES・ログ・カセットへPAT本文は渡しません。Saved tokensの一覧から登録済みtokenを削除できます。接続に使うtokenはpushやremoteへの接続時のNative画面で選び、前回の選択を既定の候補にします。
 
-Git画面かShellで、次の順に進めます。
+**Shell**で次のコマンドを実行します。
 
 ```text
 cd /
@@ -477,8 +481,19 @@ git remote add origin https://github.com/OWNER/REPOSITORY.git
 git push -u origin main
 ```
 
-URL・作者名・メールは自分の値へ置き換えてください。push前のNative画面で、送信先・ブランチ・commitを確認して許可します。その前には送信しません。以降の`git fetch`はremote履歴を更新し、`git pull`は作業ツリーに未commitの変更がなく、現在のブランチをfast-forwardできるときに反映します。分岐した履歴は拒否し、merge・checkout・cloneは未対応です。HTTPS URLへの資格情報埋め込みは受け付けません。
+remoteを削除するには`git remote rm origin`（または`git remote remove origin`）を使い、その後に登録し直せます。ローカルのファイルとコミット履歴は保持します。
 
-既定プロジェクトにはスターターファイルがあるため、無関係な既存GitHubリポジトリをcloneして読み込む手順ではありません。既存プロジェクトはGit履歴入りのMIDIカセットをImportして再開し、同じ履歴をpullしてください。pull後も実行可能なJSを最低1つ残し、FILESのサイズ制約を満たす必要があります。取得したUTF-8コード・READMEは編集可能なテキストにし、BOMも保持します。TFI／VGI・Gitオブジェクトはバイナリのままです。BOM付きファイルを表示しただけでGitが変更扱いにすることもありません。
+URL・作者名・メールは自分の値へ置き換えてください。push前のNative画面で、送信先・ブランチ・commitを確認して許可します。その前には送信しません。以降の`git fetch`はremote履歴を更新し、`git pull`は作業ツリーに未commitの変更がなく、現在のブランチをfast-forwardできるときに反映します。分岐した履歴は拒否し、merge・checkoutは未対応です。HTTPS URLへの資格情報埋め込みは受け付けません。
+
+**既存リポジトリを開く**場合は、現在のカセットをExportしてから次を実行します。
+
+```text
+cd /
+git clone --replace https://github.com/OWNER/REPOSITORY.git .
+```
+
+このアプリでは、FILESルートに1つのGitリポジトリを持ちます。cloneはリモートを現在のプロジェクトとして開き、Git履歴と`origin`も取得し、どの`/sys`ガイドを削除したかは保持します。`--replace`を省略すると、既存ファイルやスターターファイルがあるプロジェクトでは接続前にエラーにします。`--replace`付きなら、cloneがすべて成功してからFILESを置き換えます。取得失敗・取消・同時編集時は以前のファイルを保持し、読み込んだコードは自動実行しません。リモートの既定ブランチを使い、指定する場合は`-b BRANCH`または`--branch BRANCH`を追加します。保存先は`/`に解決されるパスだけで、別フォルダーの独立リポジトリは扱いません。保存先を省略した場合は常にFILESルートへ取り込み、成功後のShellは`/`へ戻ります。
+
+clone／pull後もGitデータ込みで16 MiB／1024ファイルの制約を満たす必要があります。JSがないリポジトリも保存・再読込でき、Run／Applyは無効になります。シンボリックリンク・submodule・保護されたシステムパスは拒否します。取得したUTF-8コード・READMEは編集可能なテキストにし、BOMも保持します。TFI／VGI・Gitオブジェクトはバイナリのままです。BOM付きファイルを表示しただけでGitが変更扱いにすることもありません。Git履歴入りのMIDIカセットをImportして再開することもできます。
 
 hostに対応するtokenがなければ、公開remoteのfetch／pullはNative確認後に匿名接続できます。非公開リポジトリとpushには適切なtokenが必要です。資格情報はアプリ側、remote URLとGit履歴はカセット側に保存します。アプリ外のバックアップはExport projectを使ってください。実GitHub認証・DAW／機器のタイミングは手動確認の対象で、自動検証は隔離transportで行っています。

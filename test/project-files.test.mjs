@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createProjectFiles, isInternalProjectPath, normalizeProjectPath} from '../ui/project-files.js';
 import {binaryFile} from '../ui/project-assets.js';
+import {guides, withGuide} from '../ui/guide.js';
 
 test('FILES moves nested text, binary voices and empty directories as one project edit', () => {
   const voice = binaryFile([0, 255, 128, 4]);
@@ -31,7 +32,7 @@ test('failed FILES operations publish nothing and protect guides, metadata, and 
     () => store.createFile('/sys/lib/README.md'),
     () => store.createFile('/sys/unknown.js'),
     () => store.mkdir('/SYS'),
-    () => store.remove('/sys'),
+    () => store.remove('/sys/unknown'),
     () => store.transfer('/parts', '/sys/parts'),
     () => store.createFile('/metadata.json'),
     () => store.createFile('/metadata.json/child.js'),
@@ -105,4 +106,77 @@ test('project limits and file-directory collisions are checked before replacing 
   assert.throws(() => store.validateReplacement([{path: '/index.js', data: 'entry'}, {path: '/index.js', data: 'again'}]), /duplicate/);
   assert.throws(() => store.validateReplacement([{path: '/index.js', data: new Uint8Array([0])}]), /JavaScript/);
   assert.deepEqual(store.snapshot(), before);
+});
+
+test('bundled guide deletions persist separately from editable files and advance project revision', () => {
+  const store = createProjectFiles({files: {'/index.js':'entry','/README.md':'project README'}});
+  const firstRevision = store.revision;
+  assert.equal(store.remove('/sys/README.md'), true);
+  assert.ok(store.revision > firstRevision);
+  assert.deepEqual(store.snapshot(), {files: {'/index.js':'entry','/README.md':'project README'}, directories: [], removedGuides: ['/sys/README.md']});
+  const revision = store.revision;
+  assert.equal(store.removeGuides('/sys/README.md'), false);
+  assert.equal(store.revision, revision);
+  assert.equal(store.remove('/SYS/lib'), true);
+  const selected = ['/sys/README.md','/sys/lib/README.md','/sys/lib/README_jp.md'];
+  assert.deepEqual(store.snapshot().removedGuides, selected);
+  const visible = withGuide(store.snapshot().files, store.snapshot().removedGuides);
+  assert.deepEqual(Object.keys(visible).sort(), ['/README.md','/index.js','/sys/README_jp.md']);
+  assert.equal(store.fs.has('/sys/README.md'), false);
+  assert.deepEqual(createProjectFiles(store.snapshot()).snapshot(), store.snapshot());
+  const snapshot = store.snapshot();
+  snapshot.removedGuides.length = 0;
+  assert.deepEqual(store.snapshot().removedGuides, selected);
+  assert.equal(store.removeGuides('/'), true);
+  assert.deepEqual(store.snapshot().removedGuides, Object.keys(guides));
+  assert.equal(store.remove('/sys'), false);
+  for (const operation of [() => store.write('/sys/README.md','edited'), () => store.createFile('/sys/new.js'), () => store.mkdir('/sys/new')]) assert.throws(operation, /protected/);
+});
+
+test('project edits and Git replacements retain deleted guides until an explicit project reset', () => {
+  const removedGuides = ['/sys/README.md'];
+  const store = createProjectFiles({files: {'/index.js':'entry'}, removedGuides});
+  removedGuides.length = 0;
+  store.write('/index.js','edit');
+  store.mkdir('/empty');
+  store.createFile('/new.js','new');
+  store.transfer('/new.js','/moved.js');
+  store.remove('/moved.js');
+  assert.deepEqual(store.snapshot().removedGuides, ['/sys/README.md']);
+  store.sync({'/index.js':'editor'});
+  store.replace({'/index.js':'import'}, []);
+  store.validateReplacement([{path:'/index.js',data:'Git'}]);
+  store.fs.replace([{path:'/index.js',data:'Git'}]);
+  assert.deepEqual(store.snapshot().removedGuides, ['/sys/README.md']);
+  const beforeRevision = store.revision;
+  const snapshot = store.snapshot();
+  assert.equal(store.sync(snapshot.files, snapshot.directories), false);
+  assert.equal(store.revision, beforeRevision);
+  assert.equal(store.sync(snapshot.files, snapshot.directories, []), true);
+  assert.ok(store.revision > beforeRevision);
+  assert.equal(Object.hasOwn(store.snapshot(),'removedGuides'), false);
+  store.remove('/sys');
+  store.replace({'/index.js':'new project'}, [], []);
+  assert.deepEqual(store.snapshot(), {files:{'/index.js':'new project'},directories:[]});
+});
+
+test('combined file and guide changes validate everything before publishing', () => {
+  const store = createProjectFiles({files: {'/index.js':'keep'}, removedGuides: ['/sys/README.md']});
+  const before = store.snapshot(), revision = store.revision;
+  for (const invalid of [null, {}, ['/sys'], ['/sys/unknown.md'], ['/sys/README.md','/sys/README.md']]) {
+    assert.throws(() => createProjectFiles({files:{},removedGuides:invalid}), /removed guide/i);
+    for (const method of ['sync','replace','validate']) assert.throws(() => store[method]({'/new.js':'new'}, [], invalid), /removed guide/i);
+    assert.deepEqual(store.snapshot(), before);
+    assert.equal(store.revision, revision);
+  }
+  for (const method of ['sync','replace']) assert.throws(() => store[method]({'/sys/payload.js':'payload'}, [], []), /protected/);
+  assert.throws(() => store.removeGuides('/sys/missing'), /does not exist/);
+  assert.throws(() => store.removeGuides('/index.js'), /does not exist/);
+  assert.deepEqual(store.snapshot(), before);
+  assert.equal(store.revision, revision);
+  let published;
+  store.fs.onDidChange(() => {published=store.snapshot();});
+  store.sync({}, [], Object.keys(guides));
+  assert.deepEqual(published, {files:{},directories:[],removedGuides:Object.keys(guides)});
+  assert.ok(store.revision > revision);
 });

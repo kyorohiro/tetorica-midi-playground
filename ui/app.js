@@ -51,9 +51,11 @@ let files={};
 try{const stored=savedProject?.files??JSON.parse(localStorage.getItem('midi-files'));if(stored && typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored).filter(([k,v])=>k.startsWith('/')&&(typeof v==='string'||(isBinaryFile(v)&&(!canRun(k)||isInternalProjectPath(k)))));if(entries.length)files=Object.fromEntries(entries);}}catch{}
 let exactProjectFiles=savedProject?.exactFiles===true;
 files=exactProjectFiles?upgradeExampleTypes(files,bundledExamples):mergeExamples(files,bundledExamples);
-files=withGuide(exactProjectFiles?files:ensureEntry(files, leadExample));
 let projectStore;
-try {projectStore=createProjectFiles({files,directories:savedProject?.directories??[]});}
+try {
+  projectStore=createProjectFiles({files:exactProjectFiles?files:ensureEntry(files,leadExample),directories:savedProject?.directories??[],removedGuides:savedProject?.removedGuides});
+  const snapshot=projectStore.snapshot();files=withGuide(snapshot.files,snapshot.removedGuides);
+}
 catch(error){
   saveBlocked=true;
   recoveryRaw=localStorage.getItem(projectStorageKey)??JSON.stringify({files});
@@ -69,8 +71,12 @@ if(!savedProject)runPath='/index.js';
 if(Number.isFinite(savedProject?.bpm)&&savedProject.bpm>=1&&savedProject.bpm<=999)$('bpm').value=savedProject.bpm;
 if(['internal','external'].includes(savedProject?.clockMode))$('clockMode').value=savedProject.clockMode;
 function refreshRunFiles(){
-  $('runFile').replaceChildren(...Object.keys(files).filter(path=>canRun(path)&&!isInternalProjectPath(path)).map(path=>{const option=document.createElement('option');option.value=path;option.textContent=path;return option;}));
+  const scripts=Object.keys(files).filter(path=>canRun(path)&&!isInternalProjectPath(path));
+  const options=scripts.map(path=>{const option=document.createElement('option');option.value=path;option.textContent=path;return option;});
+  if(!options.length){const option=document.createElement('option');option.value='';option.textContent='No JavaScript files';options.push(option);}
+  $('runFile').replaceChildren(...options);
   $('runFile').value=runPath;
+  $('runFile').disabled=!scripts.length;$('runButton').disabled=!scripts.length;$('applyButton').disabled=!scripts.length;$('keyboardInput').disabled=!scripts.length;
 }
 refreshRunFiles();
 $('runFile').onchange=()=>{runPath=$('runFile').value;ui.setBottomTab('code');openFile(runPath);};
@@ -79,14 +85,23 @@ $('clockMode').addEventListener('change',()=>persist());
 let codeEditor=null;
 const pendingEdits=new Map();
 const savedSelection=resolveGuideSelection(savedProject?.selected,projectStore.snapshot().files);
-let selected=Object.hasOwn(files,savedSelection)&&!isInternalProjectPath(savedSelection)?savedSelection:'/sys/README.md';
+function chooseSelection(path){return Object.hasOwn(files,path)&&!isInternalProjectPath(path)?path:
+  Object.hasOwn(files,runPath)?runPath:Object.keys(files).find(path=>!isInternalProjectPath(path))??'';}
+let selected=chooseSelection(savedSelection??'/sys/README.md');
 let explorer=null,gitPanel=null,shellPanel=null;
 function projectSnapshot(){return {...projectStore.snapshot(),runPath,selected,bpm:Number($('bpm').value),clockMode:$('clockMode').value,exactFiles:exactProjectFiles,name:projectName};}
 function persist(){if(saveBlocked)return;try{localStorage.setItem(projectStorageKey,JSON.stringify(projectSnapshot()));}catch{ui.setStatus('Local save failed. Use Export project to save your code.');}}
-function openFile(path){if(!Object.hasOwn(files,path)||isInternalProjectPath(path))return;selected=path;codeEditor?.open(path,filePreview(files[path]),isGuide(path)||isBinaryFile(files[path]));$('editor').value=filePreview(files[path]);$('editor').readOnly=isGuide(path)||isBinaryFile(files[path]);refreshRunFiles();explorer?.render();persist();}
+function openFile(path){
+  selected=chooseSelection(path);
+  if(selected){
+    const text=filePreview(files[selected]),readOnly=isGuide(selected)||isBinaryFile(files[selected]);
+    codeEditor?.open(selected,text,readOnly);$('editor').value=text;$('editor').readOnly=readOnly;
+  }else{codeEditor?.clear();$('editor').value='';$('editor').readOnly=true;}
+  $('saveFile').disabled=!selected;refreshRunFiles();explorer?.render();persist();
+}
 function updateFile(path,text){pendingEdits.set(path,text);try{projectStore.write(path,text);files[path]=text;pendingEdits.delete(path);persist();}catch(error){ui.logLine(String(error));ui.setStatus('Edit could not be saved: '+String(error));}}
 function flushEditor(){
-  if(!isGuide(selected)&&!isBinaryFile(files[selected])){
+  if(selected&&!isGuide(selected)&&typeof files[selected]==='string'){
     const text=codeEditor?codeEditor.editor.getValue({preserveBOM:true}):$('editor').value;
     if(typeof files[selected]==='string'&&text!==files[selected])pendingEdits.set(selected,text);
   }
@@ -95,11 +110,11 @@ function flushEditor(){
   persist();
 }
 function publishProjectFiles(detail={}){
-  files=withGuide(projectStore.snapshot().files);
+  const snapshot=projectStore.snapshot();files=withGuide(snapshot.files,snapshot.removedGuides);
   const transfers=detail.transfers??(detail.from&&!detail.copy?[detail]:[]);
   for(const transfer of transfers){const remap=path=>path===transfer.from||path.startsWith(transfer.from+'/')?transfer.to+path.slice(transfer.from.length):path;runPath=remap(runPath);selected=remap(selected);}
   if(!canRun(runPath)||!Object.hasOwn(files,runPath)||isInternalProjectPath(runPath))runPath=Object.keys(files).find(path=>canRun(path)&&!isInternalProjectPath(path))??'';
-  if(!Object.hasOwn(files,selected)||isInternalProjectPath(selected))selected='/sys/README.md';
+  selected=chooseSelection(selected);
   codeEditor?.reconcileFiles(files,transfers);
   if(detail.open)ui.setBottomTab('code');
   openFile(detail.open??selected);refreshRunFiles();explorer?.render();persist();
@@ -109,16 +124,26 @@ explorer=mountProjectExplorer({root:$('fileExplorerList'),newFileButton:$('newFi
 $('gitSettings').addEventListener('click',()=>{$('mainMenu').open=false;});
 const nativeGit=createNativeGit({invoke});
 gitPanel=mountProjectGit({button:$('gitSettings'),getStore:()=>projectStore,...nativeGit,
-  beforeCommand:async action=>{flushEditor();if(action==='pull')await stop();},
-  validateReplacement(entries,dirs,action){if(action==='pull'&&!entries.some(file=>canRun(file.path)&&!isInternalProjectPath(file.path)&&typeof file.data==='string'))throw Error('The remote project must contain at least one JavaScript file. Previous files kept.');},
-  onChanged:()=>{exactProjectFiles=true;publishProjectFiles();},onError:projectError,onStatus:text=>ui.setStatus(text)});
+  beforeCommand:async action=>{flushEditor();if(action==='pull'||action==='clone')await stop();},
+  onChanged:(snapshot,detail)=>{
+    if(detail?.action==='clone'){
+      pendingEdits.clear();explorer?.reset();
+      const scripts=Object.keys(snapshot.files).filter(path=>canRun(path)&&!isInternalProjectPath(path)&&!isGuide(path)&&typeof snapshot.files[path]==='string');
+      runPath=scripts.includes('/index.js')?'/index.js':scripts[0]??'';selected=runPath;
+      codeEditor?.replaceFiles(withGuide(snapshot.files,snapshot.removedGuides));
+    }
+    exactProjectFiles=true;publishProjectFiles();
+  },onError:projectError});
 shellPanel=mountProjectShell({root:$('shellPanel'),stopButton:$('shellStop'),getStore:()=>projectStore,beforeCommand:flushEditor,beforeMutation:()=>stop(),
-  onChanged:(_,detail)=>{exactProjectFiles=true;publishProjectFiles(detail);},git:()=>gitPanel,onError:projectError});
+  onChanged:(snapshot,detail)=>{
+    if(detail.clearedRoot){gitPanel.invalidate();pendingEdits.clear();explorer.reset();runPath='';selected='';codeEditor?.replaceFiles(withGuide(snapshot.files,snapshot.removedGuides));}
+    exactProjectFiles=true;publishProjectFiles(detail);
+  },git:()=>gitPanel,onError:projectError});
 $('shellTab').addEventListener('click',()=>shellPanel.focus());
 openFile(selected);
 $('editor').oninput=()=>{if($('editor').readOnly)return;updateFile(selected,$('editor').value);};
 $('editor').onkeydown=e=>{if($('editor').readOnly)return;if(e.key==='Tab'){e.preventDefault();const editor=$('editor');editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');editor.oninput();}};
-$('saveFile').onclick=()=>{$('mainMenu').open=false;const value=pendingEdits.get(selected)??files[selected];const url=URL.createObjectURL(new Blob([fileBytes(value)],{type:isBinaryFile(value)?'application/octet-stream':canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('saveFile').onclick=()=>{if(!selected)return;$('mainMenu').open=false;const value=pendingEdits.get(selected)??files[selected];const url=URL.createObjectURL(new Blob([fileBytes(value)],{type:isBinaryFile(value)?'application/octet-stream':canRun(selected)?'text/javascript':'text/plain'}));const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop();a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 function downloadProject(fileName) {
   flushEditor();const bytes=exportProject(projectSnapshot());
   const url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));
@@ -149,11 +174,11 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('mainMenu
 async function replaceProject(project,name){
   await stop();
   const restoredFiles=upgradeExampleTypes(project.files,bundledExamples);
-  const nextStore=createProjectFiles({files:restoredFiles,directories:project.directories??[]});
+  const nextStore=createProjectFiles({files:restoredFiles,directories:project.directories??[],removedGuides:project.removedGuides});
   localStorage.setItem(projectStorageKey,JSON.stringify({...project,files:restoredFiles,exactFiles:true,name}));
   saveBlocked=false;
   gitPanel?.invalidate();shellPanel?.invalidate();projectStore=nextStore;pendingEdits.clear();
-  projectName=name;exactProjectFiles=true;files=withGuide(restoredFiles);runPath=project.runPath;
+  projectName=name;exactProjectFiles=true;files=withGuide(restoredFiles,project.removedGuides);runPath=project.runPath;
   $('bpm').value=project.bpm;$('clockMode').value=project.clockMode;
   explorer?.reset();codeEditor?.replaceFiles(files);
   openFile(resolveGuideSelection(project.selected,restoredFiles));ui.clearConsole();ui.setBottomTab('code');
@@ -227,6 +252,7 @@ window.addEventListener('blur',releaseKeys);
 async function stop(){await auditionKeyboard?.releaseAll();activeRunId=null;pressedKeys.clear();++epoch;worker?.terminate();worker=null;$('follow').checked=false;ui.setRuntimeState('Stopped');await invoke('stop_notes');await invoke('synth_panic');}
 async function start(){
   flushEditor();
+  if(!runPath){ui.setStatus('No JavaScript files. Create or import a script to Run.');return;}
   const target=runPath;
   const code=runSource(files,target);
   const ticket=epoch+1;await stop();if(ticket!==epoch)return;const bpm=Number($('bpm').value);
@@ -322,7 +348,8 @@ loadMonaco().then(monaco=>{
   try {
     codeEditor=createFileEditor(monaco,container,updateFile);
     codeEditor.syncFiles(files);
-    codeEditor.open(selected,filePreview(files[selected]),isGuide(selected)||isBinaryFile(files[selected]));
+    if(selected)codeEditor.open(selected,filePreview(files[selected]),isGuide(selected)||isBinaryFile(files[selected]));
+    else codeEditor.clear();
     try {
       definitions=createDefinitionViewer(monaco,codeEditor.editor,{
         openProjectFile:path=>{ui.setBottomTab('code');openFile(path);},isProjectFile:path=>Object.hasOwn(files,path),

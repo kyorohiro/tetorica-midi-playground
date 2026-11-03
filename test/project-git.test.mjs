@@ -67,7 +67,7 @@ test('branches can be created at HEAD without switching and unsupported actions 
   assert.ok(isBinaryFile(store.snapshot().files['/.git/refs/heads/experiment.js']));
   const reloaded = createProjectFiles(importProject(exportProject({...store.snapshot(), runPath: '/index.js', selected: '/index.js', bpm: 120, clockMode: 'internal'})));
   assert.deepEqual((await repository(reloaded).execute('branch')).local, ['experiment', 'experiment.js', 'main']);
-  for (const action of ['checkout', 'merge', 'clone']) await assert.rejects(git.execute(action), /Unsupported Git operation/);
+  for (const action of ['checkout', 'merge']) await assert.rejects(git.execute(action), /Unsupported Git operation/);
   for (const action of ['push', 'fetch', 'pull']) await assert.rejects(git.execute(action), /Tauri app/);
   await git.execute('remote', {url: 'https://example.invalid/repo'});
   assert.deepEqual(await git.execute('remote'), [{remote: 'origin', url: 'https://example.invalid/repo.git'}]);

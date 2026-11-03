@@ -27,10 +27,10 @@ a file or folder for Copy Relative Path / Copy / Paste / Delete / Cut / Rename /
 New File / New Folder. Rename changes the name within its folder; Cut / Paste
 or dragging moves it. Copy keeps a snapshot of text and binary files and chooses
 an unused name when pasting into a folder with the same name.
-Menu → Git provides local staging, diffs, commits, history and branch creation;
-Git history travels with the cassette. The virtual FILES Shell shares this repository;
+Git commands in Shell provide local staging, diffs, commits, history and branch creation;
+Git history travels with the cassette. Menu → Git settings manages saved tokens;
 HTTPS remotes (including GitHub) use native approval and OS-stored PATs.
-Fetch, current-branch fast-forward pull and push are supported; clone, checkout and merge are not.
+Clone, fetch, current-branch fast-forward pull and push are supported; checkout and merge are not.
 `livePrepare()` caches inferred initialization results across Apply; `tween()`
 animates MIDI controls over seconds or beats with loop cancellation.
 Links in API completion details and hover open read-only type declarations and
@@ -190,7 +190,7 @@ rejection. Test the new UI manually with GarageBand using `examples/melody.js`, 
 Stop, rerun, and output disconnect. Cmd/Ctrl+Enter runs; Shift+Escape stops.
 
 Release packaging and itch.io page draft: [RELEASE.md](RELEASE.md).
-The in-app guides live under `/sys/` so project README files can be tracked in Git. Their source is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.
+The in-app guides live under `/sys/` so project README files can be tracked in Git. They are read-only, but can be deleted from FILES or Shell; deletion survives restarts, cassette export/import and cloning. **New Project** restores the bundled guides. Their source is maintained in `ui/README.md` (English) and `ui/README_jp.md` (Japanese); `scripts/prepare.mjs` embeds it before dev/build.
 
 ### MIDI Clock test sender (macOS)
 
@@ -212,10 +212,10 @@ The bend and CC examples in FILES can be tested with the internal YM2612 or Sega
 
 ## Shell and GitHub
 
-Open **Shell** for project commands (`help`, `pwd`, `ls`, `cd`, `cat`, `mkdir`, `cp`, `mv`, `rm`, `find`, `rg`, `read`, `edit`, `patch`), pipes and redirection. Commands operate on virtual FILES; they do not invoke the host shell or evaluate arbitrary JavaScript. Editor changes are synchronized before commands. File mutations stop playback; read-only commands do not.
+Open **Shell** for project commands (`help`, `pwd`, `ls`, `cd`, `cat`, `mkdir`, `cp`, `mv`, `rm`, `find`, `rg`, `read`, `edit`, `patch`), pipes and redirection. Commands operate on virtual FILES; they do not invoke the host shell or evaluate arbitrary JavaScript. Editor changes are synchronized before commands. File mutations stop playback; read-only commands do not. Tab completes paths; Ctrl+A/E and related line-editing keys work inside Shell. At the FILES root, `rm -rf sys` deletes the bundled guides, and `rm -rf .` clears all FILES, including guides and Git history. The empty project can be saved, exported, reopened and cloned into; saved app tokens are retained.
 
-**Menu → Git…** manages local history, HTTPS remote URL/branch and named PAT metadata. Register the actual PAT in the native dialog; macOS Keychain stores the secret. It is never sent to JavaScript or included in a cassette. The credential service is separate from FM2612 Playground. Native approval identifies the remote and, for push, the branch and commit.
+**Menu → Git settings…** manages saved tokens, like FM2612 Playground. Register a named PAT in the native dialog; macOS Keychain stores the secret. It is never sent to JavaScript or included in a cassette. The credential service is separate from FM2612 Playground. Run Git commands in **Shell** for local history and HTTPS remotes. Choose a token in the native connection dialog; it offers your previous selection. Native approval identifies the remote and, for push, the branch and commit.
 
-Start with an **empty** GitHub repository, commit locally, set its HTTPS `.git` URL, then push. Later fetch or fast-forward pull on the current branch. Importing an unrelated existing repository through clone is not supported; a cassette carrying its existing Git history can be restored. Public reads can proceed anonymously after native confirmation when no token matches the host. See the in-app [English](ui/README.md#github-and-https-remotes) / [Japanese](ui/README_jp.md#githubとhttps-remote) guide for commands.
+Start with an **empty** GitHub repository, commit locally, set its HTTPS `.git` URL, then push. Later fetch or fast-forward pull on the current branch. To open an existing repository as this FILES project, export the current cassette first, then run `git clone --replace HTTPS_URL .` from `/`. Plain clone refuses a nonempty project; checkout and merge remain unavailable. Public reads can proceed anonymously after native confirmation when no token matches the host. See the in-app [English](ui/README.md#github-and-https-remotes) / [Japanese](ui/README_jp.md#githubとhttps-remote) guide for commands.
 
 Native Git dependency notices are shipped in [ui/vendor/native-git](ui/vendor/native-git/README.md); the shared JavaScript Git engine notices remain in [ui/vendor/virtual-git](ui/vendor/virtual-git/README.md).

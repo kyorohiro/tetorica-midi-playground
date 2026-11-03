@@ -1,15 +1,17 @@
 import {renderFileTree} from './shared/playground_file_tree.js';
 import {createProjectFiles, isInternalProjectPath, normalizeProjectPath} from './project-files.js';
 import {binaryFile} from './project-assets.js';
-import {isGuide, canRun} from './guide.js';
+import {isGuide, withGuide} from './guide.js';
 
 const inside = (path, root) => path === root || path.startsWith(root + '/');
 const directoryOf = path => path.slice(0, path.lastIndexOf('/')) || '/';
 const join = (directory, name) => (directory === '/' ? '' : directory) + '/' + name;
 const basename = path => path.slice(path.lastIndexOf('/') + 1);
 const writable = path => !isGuide(path) && !isInternalProjectPath(path);
-const exists = (store, path) => Object.hasOwn(store.snapshot().files, path) || store.listDirectories().includes(path);
-const isDirectory = (store, path) => path === '/' || store.listDirectories().includes(path);
+const visibleFiles = store => {const snapshot=store.snapshot();return withGuide(snapshot.files,snapshot.removedGuides);};
+const isDirectory = (store, path) => path === '/' || store.listDirectories().includes(path) ||
+  (isGuide(path) && Object.keys(visibleFiles(store)).some(candidate => candidate.startsWith(path + '/')));
+const exists = (store, path) => Object.hasOwn(visibleFiles(store), path) || isDirectory(store, path);
 
 /** Copy captures bytes now; cut retains a source path until a move succeeds. */
 export function createExplorerClipboard() {
@@ -92,7 +94,7 @@ export function mountProjectExplorer({root, newFileButton, newFolderButton, acti
   const focusAnchor = () => {if (anchor?.isConnected !== false) anchor?.focus?.({preventScroll:true});};
   function closeMenu(restore = false) {const wasOpen = !menu.hidden; menu.hidden = true; if (restore && wasOpen) focusAnchor();}
   dialog.addEventListener('close', () => {generation++; focusAnchor();});
-  function show(mode, path = getSelected()) {
+  function show(mode, path = getSelected() || '/') {
     generation++; closeMenu();
     target = path; operation = mode; actionStore = getStore(); error.textContent = ''; submit.disabled = false;
     label.hidden = mode === 'delete';
@@ -124,11 +126,8 @@ export function mountProjectExplorer({root, newFileButton, newFolderButton, acti
     onChanged?.(result ?? detail); render();
   }
   function publishDraft(store, revision, next) {
-    if (!Object.entries(next.files).some(([path,value]) => canRun(path) && !isInternalProjectPath(path) && !isGuide(path) && typeof value === 'string')) {
-      throw Error('Keep at least one JavaScript file (.js or .mjs) for Run and project export. Create another script before removing or renaming this one.');
-    }
     if (getStore() !== store || store.revision !== revision) throw Error('Project changed during the FILES action. Try again.');
-    store.sync(next.files, next.directories);
+    store.sync(next.files, next.directories, next.removedGuides ?? []);
   }
   form.onsubmit = async event => {
     event.preventDefault(); submit.disabled = true;
@@ -175,7 +174,7 @@ export function mountProjectExplorer({root, newFileButton, newFolderButton, acti
         await change(draft => {plan = clipboard.plan(draft,directory,store);plan.apply();return plan.detail;}, {}, () => assertCurrent(store,stamp));
         plan.commit(); onStatus?.('Pasted ' + plan.destination + '.');
       },clipboard.available && writable(directory)],
-      ['Delete',() => show('delete',path),mutable],
+      ['Delete',() => show('delete',path),path !== '/' && !isInternalProjectPath(path)],
       ['Cut',() => capture(true),mutable],
       ['Rename…',() => show('rename',path),mutable],
       ['New File…',() => show('create',path),writable(directory)],
@@ -236,7 +235,7 @@ export function mountProjectExplorer({root, newFileButton, newFolderButton, acti
   }
   newFileButton.onclick = () => {anchor = newFileButton;show('create');};
   newFolderButton.onclick = () => {anchor = newFolderButton;show('folder');};
-  actionsButton.onclick = event => {const bounds = actionsButton.getBoundingClientRect();openMenu({preventDefault:() => event?.preventDefault?.(),clientX:bounds.left,clientY:bounds.bottom},getSelected(),actionsButton);};
+  actionsButton.onclick = event => {const bounds = actionsButton.getBoundingClientRect();openMenu({preventDefault:() => event?.preventDefault?.(),clientX:bounds.left,clientY:bounds.bottom},getSelected() || '/',actionsButton);};
   importButton.onclick = () => {
     importDirectory = currentDirectory(getSelected());
     if (!writable(importDirectory)) importDirectory = '/';
