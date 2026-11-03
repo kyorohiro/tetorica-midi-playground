@@ -1,24 +1,80 @@
 /** MIDI note number 0–127 or a note name, for example C4. */
 type MidiNote = number | string;
-/** Durations are in beats. */
-interface MidiPlayOptions { duration?: number; velocity?: number; }
-interface MidiNoteOptions extends MidiPlayOptions { /** MIDI channel index 0–15 (CH1–CH16). */ channel?: number; }
+/** Options for a timed note; durations follow the current tempo. */
+interface MidiPlayOptions {
+  /** Duration in beats, greater than 0 and at most 128; default 0.5. Internal-clock notes must last 1–10000 ms. */
+  duration?: number;
+  /** Note-on velocity, integer 1–127; default 90. */
+  velocity?: number;
+}
+interface MidiNoteOptions extends MidiPlayOptions {
+  /** MIDI channel index 0–15 (CH1–CH16); default CH1 (0). */
+  channel?: number;
+}
 /** Existing FM2612 Playground operator fields; omitted values use a quiet default. */
 interface Ym2612Operator {
-  multi?: number; dt?: number; tl?: number; rs?: number; ar?: number;
-  d1r?: number; d2r?: number; sr?: number; rr?: number; sl?: number; ssg?: number; am?: boolean;
+  /** Frequency multiplier register, integer 0–15; default 1. */
+  multi?: number;
+  /** Raw detune register, integer 0–7; default 0. */
+  dt?: number;
+  /** Total attenuation level, integer 0–127; default 127 (silent). Lower values are louder. */
+  tl?: number;
+  /** Envelope rate scaling, integer 0–3; default 0. */
+  rs?: number;
+  /** Attack rate, integer 0–31; default 0. */
+  ar?: number;
+  /** First decay rate, integer 0–31; default 0. */
+  d1r?: number;
+  /** Second decay/sustain rate, integer 0–31; default 0. The sr field takes precedence. */
+  d2r?: number;
+  /** Alias for d2r, integer 0–31; takes precedence when both are supplied. Default 0. */
+  sr?: number;
+  /** Release rate, integer 0–15; default 15. */
+  rr?: number;
+  /** Sustain level register, integer 0–15; default 0. */
+  sl?: number;
+  /** SSG-EG register, integer 0–15; default 0 (disabled). */
+  ssg?: number;
+  /** Enable amplitude modulation for this operator; default false. */
+  am?: boolean;
 }
 interface Ym2612Preset {
-  label?: string; algorithm?: number; feedback?: number;
-  pan?: {left?: boolean; right?: boolean}; ams?: number; pms?: number; b4?: number;
+  /** Optional descriptive name; does not change the transmitted voice. */
+  label?: string;
+  /** FM connection algorithm, integer 0–7; default 7. */
+  algorithm?: number;
+  /** Operator feedback register, integer 0–7; default 0. */
+  feedback?: number;
+  /** Override the stereo output bits in b4; both outputs are enabled by default. */
+  pan?: {
+    /** Enable the left output; defaults to the left bit in b4 (normally true). */
+    left?: boolean;
+    /** Enable the right output; defaults to the right bit in b4 (normally true). */
+    right?: boolean;
+  };
+  /** Amplitude modulation sensitivity, integer 0–3; overrides b4. Default 0 unless supplied by b4. */
+  ams?: number;
+  /** Pitch modulation sensitivity, integer 0–7; overrides b4. Default 0 unless supplied by b4. */
+  pms?: number;
+  /** Raw stereo/AMS/PMS register, integer 0–255 with reserved bit 3 clear; default 0xC0. */
+  b4?: number;
   /** Logical OP1–4: array indexes 0–3 or a one-based operator map. */
   operators?: Ym2612Operator[] | {[operator: number]: Ym2612Operator};
 }
 interface MidiOutput {
-  /** This handle's destination and channel; resolves when the message is sent. */
-  noteOn(note: MidiNote, options?: {velocity?: number}): Promise<void>;
-  noteOff(note: MidiNote, options?: {velocity?: number}): Promise<void>;
+  /** Hold a note on this handle's destination and channel; resolves when the message is sent. */
+  noteOn(note: MidiNote, options?: {
+    /** Note-on velocity, integer 1–127; default 100 for output handles. */
+    velocity?: number;
+  }): Promise<void>;
+  /** Release a note on this handle's destination and channel. */
+  noteOff(note: MidiNote, options?: {
+    /** Release velocity, integer 0–127; default 0. */
+    velocity?: number;
+  }): Promise<void>;
+  /** Pitch bend in -1..1, with 0 at center; semitone range depends on the receiver. */
   pitchBend(value: number): Promise<void>;
+  /** Send a control change; controller and value are integers 0–127. */
   cc(controller: number, value: number): Promise<void>;
   /** Play on this handle's channel. Resolves after the duration; await is optional. */
   play(note: MidiNote, options?: MidiPlayOptions): Promise<void>;
@@ -38,19 +94,38 @@ declare const MIDI_OUTPUT_04: MidiOutputSlot;
 declare const midi: {
   enableSoundChip: typeof enableSoundChip;
   /** Create an output handle; opens on first play/setVoice. YM2612 without channel: play on CH1 with native voice allocation, setVoice on all channels. Other outputs default to CH1. */
-  output(destination: MidiDestination, options?: {channel?: number}): MidiOutput;
+  output(destination: MidiDestination, options?: {
+    /** MIDI channel index 0–15 (CH1–CH16). Omit for CH1 notes and all-channel YM2612 voice changes. */
+    channel?: number;
+  }): MidiOutput;
 };
-/** Enable the shared native sound rack; repeated calls preserve settings. */
-/** roundRobin false pins YM2612 CH1..CH6; higher MIDI channels are silent. Mode changes silence notes. */
-declare function enableSoundChip(chip: 'ym2612' | 'sega-psg' | 'tetorica-ym2612' | 'tetorica-sega-psg', options?: {roundRobin?: boolean}): Promise<void>;
+type Ym2612ChipId = 'ym2612' | 'tetorica-ym2612';
+type SoundChipId = Ym2612ChipId | 'sega-psg' | 'tetorica-sega-psg';
+interface Ym2612SoundChipOptions {
+  /** Default true: allocate voices automatically. False pins CH1–CH6 to physical voices; CH7–CH16 are silent. Changing modes silences held notes. */
+  roundRobin?: boolean;
+}
+/** Enable the shared YM2612 rack; repeated calls preserve settings. Allocation options apply only to YM2612. */
+declare function enableSoundChip(chip: Ym2612ChipId, options?: Ym2612SoundChipOptions): Promise<void>;
+/** Enable a shared native sound chip; repeated calls preserve settings. PSG does not accept an allocation mode. */
+declare function enableSoundChip(chip: SoundChipId, options?: {roundRobin?: never}): Promise<void>;
 /** Play using the MIDI output selected in the UI. */
 declare function play(note: MidiNote, options?: MidiNoteOptions): Promise<void>;
 /** Use context.playOutput for loop ownership in imported or explicit callbacks. */
 declare function playOutput(output: MidiOutput, note: MidiNote, options?: MidiPlayOptions): Promise<void>;
 /** MIDI channel indices are 0–15; default is CH1 (0). */
-interface MidiChannelOptions { channel?: number; }
-interface MidiOnOptions extends MidiChannelOptions { /** Integer 1–127; default 90. */ velocity?: number; }
-interface MidiOffOptions extends MidiChannelOptions { /** Release velocity 0–127; default 0. */ velocity?: number; }
+interface MidiChannelOptions {
+  /** MIDI channel index 0–15 (CH1–CH16); default CH1 (0). */
+  channel?: number;
+}
+interface MidiOnOptions extends MidiChannelOptions {
+  /** Note-on velocity, integer 1–127; default 90. */
+  velocity?: number;
+}
+interface MidiOffOptions extends MidiChannelOptions {
+  /** Release velocity, integer 0–127; default 0. */
+  velocity?: number;
+}
 /** Selected MIDI output. Held until noteOff, loop release or Stop; resolves when sent. */
 declare function noteOn(note: MidiNote, options?: MidiOnOptions): Promise<void>;
 /** Release a tracked note on the selected MIDI output. */

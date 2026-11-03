@@ -10,10 +10,9 @@ const bell = {
   ],
 };
 // Keep the handle and initialization across Apply; Run creates new context.
-/** @type {{lead: MidiOutput, ready: boolean}} */
-const state = context.ym2612VoiceDemo ??= {
+const state = /** @type {{lead: MidiOutput, ready: boolean}} */ (context.ym2612VoiceDemo ??= {
   lead: midi.output('tetorica-ym2612', {}), ready: false,
-};
+});
 if (!state.ready) {
   await enableSoundChip('ym2612');
   // No channel: set the voice on all 16 MIDI channels, play on CH1.

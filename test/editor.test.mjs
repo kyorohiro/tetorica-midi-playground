@@ -28,17 +28,19 @@ test('MIDI completion covers public helpers and replaces only the current word',
  assert.deepEqual(provider.provideCompletionItems({getWordUntilPosition:()=>({startColumn:7,endColumn:7}),getLineContent:()=> 'piano.'},{lineNumber:1,column:7}).suggestions,[]);
 });
 
-test('JavaScript completion excludes DOM libraries while preserving language options',()=>{
+test('JavaScript checks isolated FILES modules without DOM libraries',()=>{
  let options={allowJs:true,allowNonTsExtensions:true,lib:['dom','esnext']},diagnostics;
- configureJavaScript({languages:{typescript:{javascriptDefaults:{
+ configureJavaScript({languages:{typescript:{ScriptTarget:{ES2020:7},ModuleKind:{ESNext:99},ModuleResolutionKind:{NodeJs:2},javascriptDefaults:{
    addExtraLib:(source,path)=>{assert.match(source,/interface MidiOutput/);assert.equal(path,"file:///tetorica-api.d.ts");},
    setEagerModelSync:value=>assert.equal(value,true),
    getCompilerOptions:()=>options,
    setCompilerOptions:value=>{options=value;},
    setDiagnosticsOptions:value=>{diagnostics=value;},
  }}}});
- assert.deepEqual(options,{allowJs:true,allowNonTsExtensions:true,lib:['es2022']});
- assert.equal(diagnostics.noSemanticValidation,true);
+ assert.deepEqual(options,{allowJs:true,allowNonTsExtensions:true,checkJs:true,noLib:false,lib:['es2022'],target:7,module:99,moduleResolution:2,moduleDetection:3});
+ assert.equal(diagnostics.noSemanticValidation,false);
+ assert.equal(diagnostics.noSyntaxValidation,false);
+ assert.deepEqual(diagnostics.diagnosticCodesToIgnore,[1108]);
  assert.ok(helperDocs.play);
 });
 

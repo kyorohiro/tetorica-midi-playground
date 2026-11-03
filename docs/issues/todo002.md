@@ -131,7 +131,7 @@ const lead = midi.output(MIDI_OUTPUT_02, { channel: 1 });
 - [x] 通常は型推論で補完でき、推論できない関数引数などをJSDocで補える例を用意する。
 - [x] Monacoの言語サービスを使うテストで、実際の補完候補・説明を検証する。`screenLeft`など不要なDOM候補の除外も維持する。
 
-実装メモ: `ui/playground-api.d.ts`をMonacoへ登録。`context`はliveLoopのcallback引数で、グローバルには追加しない。FILESのJSモデルを起動時に登録し、相対import先のJSDocも利用する。`examples/03_context_jsdoc.js`を追加。Monaco実言語サービスで補完・ホバー・相対importを検証し、Workerでサンプルの演奏とループ所有者を検証。Nativeアプリの実画面での候補表示は未確認。npm importや実行時型検証は対象外。
+実装メモ: `ui/playground-api.d.ts`をMonacoへ登録。liveLoopのcallback引数はループ用API、グローバル`context`／`pg.context`はApplyで保持するユーザー状態。FILESのJSモデルを起動時に登録し、相対import先のJSDocも利用する。`examples/03_context_jsdoc.js`を追加。Monaco実言語サービスで補完・ホバー・相対importを検証し、Workerでサンプルの演奏とループ所有者を検証。2026-11-03の型チェック・ファイルスコープ改善と検証結果は[editor_types_01.md](editor_types_01.md)を参照。Nativeアプリの実画面での候補表示は未確認。npm importや実行時型検証は対象外。
 
 ## 03. FILESから試せるexamples
 

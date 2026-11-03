@@ -86,9 +86,9 @@ This is a MIDI Playground project format, not directly compatible with the YM261
 ## Scope of this experimental release
 
 Scripts default to internal BPM; see External beat clock below. They do not automatically follow GarageBand's tempo.
-The MIDI tab's Clock test and code execution are still separate.
-FM synthesis, audio output, effects, Monaco, and external-clock-driven code
-execution are not included yet.
+The MIDI tab's Clock test is separate from the script's Beat clock setting.
+Native YM2612/Sega PSG audio and the Monaco editor are included. External-clock-driven
+beat waits are experimental; effects are not included yet.
 Only run JavaScript whose contents you have reviewed and trust.
 
 When finished, click Stop, then Disconnect in MIDI settings.
@@ -172,7 +172,9 @@ Pass music helpers as function arguments when a module needs them; modules do no
 
 ## Editor
 
-Monaco provides JavaScript highlighting, search (Command/Ctrl+F), completion (Ctrl+Space), and per-file undo and cursor history. MIDI helper suggestions describe this app’s API. Guides remain read-only. Command/Ctrl+Enter runs the selected Run file; Shift+Escape stops. Editor assets are bundled locally, with a textarea fallback if loading fails. JavaScript type/syntax diagnostics are disabled because Run files execute inside an async function with injected helpers. Cross-module type resolution is not provided.
+Monaco provides JavaScript highlighting, search (Command/Ctrl+F), completion (Ctrl+Space), and per-file undo and cursor history. MIDI helper suggestions describe this app’s API. Guides remain read-only. Command/Ctrl+Enter runs the selected Run file; Shift+Escape stops. Editor assets are bundled locally, with a textarea fallback if loading fails.
+
+JavaScript syntax and type diagnostics are enabled. For example, `play("C4", {velocity: "loud"})` reports a type error. Each FILES script has its own variable and JSDoc scope; relative JavaScript imports preserve exported types, completion, hover and argument hints. Run files support top-level `await` and early `return`, matching their async execution. Editor diagnostics do not prevent Run and do not validate every runtime restriction: imported modules still need helpers passed explicitly, as described above. Use JSDoc for custom shared `context` state; see `examples/10_context_init.js`.
 
 Completion uses ECMAScript built-ins and MIDI helpers; browser Window/DOM globals such as screenLeft are excluded. Local variables and standard JavaScript methods remain available.
 

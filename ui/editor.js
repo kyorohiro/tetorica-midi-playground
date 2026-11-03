@@ -2,11 +2,25 @@ import {apiTypes} from './api-types.js';
 import {tokenizer} from './vendor/acorn.mjs';
 // Worker scripts use ECMAScript built-ins, not the browser Window/DOM API.
 export function configureJavaScript(monaco) {
-  const defaults = monaco.languages.typescript.javascriptDefaults;
-  defaults.setCompilerOptions({...defaults.getCompilerOptions(), lib: ['es2022']});
+  const typescript = monaco.languages.typescript;
+  const defaults = typescript.javascriptDefaults;
+  defaults.setCompilerOptions({
+    ...defaults.getCompilerOptions(),
+    allowJs: true, allowNonTsExtensions: true, checkJs: true, noLib: false,
+    lib: ['es2022'], target: typescript.ScriptTarget.ES2020,
+    module: typescript.ModuleKind.ESNext,
+    moduleResolution: typescript.ModuleResolutionKind.NodeJs,
+    // Every FILES script has its own async evaluation scope at runtime.
+    // Monaco 0.52 does not expose ModuleDetectionKind, but its worker supports Force (3).
+    moduleDetection: 3,
+  });
   defaults.addExtraLib(apiTypes, 'file:///tetorica-api.d.ts');
   defaults.setEagerModelSync(true);
-  defaults.setDiagnosticsOptions({noSemanticValidation: true, noSyntaxValidation: true});
+  defaults.setDiagnosticsOptions({
+    noSemanticValidation: false, noSyntaxValidation: false,
+    // A Run file is the body of an async function, so an early return is valid.
+    diagnosticCodesToIgnore: [1108],
+  });
 }
 
 // Models retain per-file undo history and cursor/scroll state across FILES switches.

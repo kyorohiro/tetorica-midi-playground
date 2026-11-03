@@ -15,7 +15,9 @@ The FM2612-style interface now includes Code / Console / MIDI / Helper tabs,
 Run / Stop, a local file list, JS import/export and an expandable Monaco editor with MIDI helper completion.
 The tab controller and file tree are snapshots of the original Playground modules
 under `ui/shared`; the original Browser application is unchanged. Monaco is not
-yet included; the editor currently uses a textarea.
+loaded from a CDN: it is bundled locally, with a textarea fallback. The editor
+checks JavaScript types and syntax, isolates each FILES script's scope, and
+provides MIDI API/JSDoc completion, hover and argument hints across relative imports.
 
 Connect an output in **MIDI settings**, select `/index.js` in **Run file**, and press **Run**.
 The viewed file and Run file are independent. Select `/examples/05_live_loop.js` in Run file to try a loop. `examples/05_live_loop.js` repeats notes until **Stop**. GarageBand needs no Clock
@@ -39,8 +41,9 @@ Scripts are trusted code running in a Worker, not a complete security sandbox.
 FILES modules can be loaded with `await import("./notes.js")` from the Run file.
 Imported modules support static relative imports and exports; see the in-app guide.
 
-Audio, FM presets/effects, SPP/seek, predictive scheduling,
-Windows builds are not implemented yet. External play now uses native pulse deadlines; real-device timing validation remains open.
+Native YM2612/Sega PSG audio and YM2612 voice editing/import are included.
+Effects, SPP/seek, predictive scheduling and Windows builds are not implemented yet.
+External play now uses native pulse deadlines; real-device timing validation remains open.
 BPM display in the MIDI tab is an interval estimate, not a PLL.
 
 ### Run

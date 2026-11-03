@@ -84,8 +84,8 @@ ZIPはMIDI Playground専用のプロジェクト形式です。YM2612 Playground
 ## 今回の実験版の範囲
 
 既定では内部BPMで動きます。試験的な外部拍待機は末尾の説明を参照してください。GarageBandのテンポとは自動同期しません。
-MIDIタブのClock受信テストと、コード実行はまだ別です。
-FM音源、音声出力、エフェクト、Monaco、外部Clockでのコード実行は未搭載。
+MIDIタブのClock受信テストと、スクリプトのBeat clock設定は別です。
+Native YM2612／Sega PSGの音声出力とMonacoは搭載済みです。外部Clockでの拍待機は試験的な対応で、エフェクトは未搭載です。
 読み込むJavaScriptは自分で内容を確認したものを使ってください。
 
 終了時はStop、MIDI settingsのDisconnectを押してください。
@@ -169,7 +169,9 @@ Run fileでは文字列の相対パスで `await import()` を使います。読
 
 ## エディター
 
-MonacoでJavaScriptの色分け、検索（Command/Ctrl+F）、補完（Ctrl+Space）、ファイル別Undo・カーソル位置保持が使えます。MIDIヘルパーの補完にはこのアプリの仕様を表示します。ガイドは編集できません。Command/Ctrl+EnterでRun fileを実行、Shift+Escapeで停止します。ローカル同梱のためCDN接続は不要で、読み込み失敗時はtextareaを使えます。Run fileはヘルパーを渡したasync関数内で実行するため、JavaScriptの型・構文診断は無効です。モジュール間の型解決は未対応です。
+MonacoでJavaScriptの色分け、検索（Command/Ctrl+F）、補完（Ctrl+Space）、ファイル別Undo・カーソル位置保持が使えます。MIDIヘルパーの補完にはこのアプリの仕様を表示します。ガイドは編集できません。Command/Ctrl+EnterでRun fileを実行、Shift+Escapeで停止します。ローカル同梱のためCDN接続は不要で、読み込み失敗時はtextareaを使えます。
+
+JavaScriptの型・構文診断を有効にしています。たとえば`play("C4", {velocity: "loud"})`には型エラーを表示します。FILESの各スクリプトで変数・JSDocの型を分離し、相対JavaScript import先の型・補完・ホバー・引数ヒントを利用できます。Run fileのトップレベルの`await`や早期`return`も、async関数内で実行する仕様に合わせて扱います。診断があってもRunは実行でき、実行時の制約をすべて検証するものではありません。import先では前節のとおりヘルパーを引数で渡してください。共有状態`context`の中身にはJSDocで型を指定します（`examples/10_context_init.js`参照）。
 
 補完はECMAScript標準とMIDIヘルパーを対象にし、screenLeftなどのWindow/DOMグローバルを除外します。ローカル変数・JavaScript標準メソッドの補完は維持します。
 
